@@ -1,4 +1,4 @@
-{{config(materialized ='table')}}
+{{config(materialized ='table', enabled=false,)}}
 
 WITH daily AS (
     SELECT

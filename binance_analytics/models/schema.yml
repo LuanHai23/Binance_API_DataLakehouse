@@ -1,0 +1,47 @@
+version: 2
+
+models:
+  - name: mart_market_overview
+    description: "Latest market snapshot and 24-hour statistics by symbol."
+    columns:
+      - name: symbol
+        tests: [not_null, unique]
+      - name: current_price
+        tests: [not_null]
+      - name: volume_24h
+        tests: [not_null]
+      - name: last_updated
+        tests: [not_null]
+
+  - name: mart_ohlc_summary
+    description: "1-minute OHLC candles enriched with hourly volume and buy-pressure metrics."
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "high_price >= low_price"
+          config:
+            severity: warn
+    columns:
+      - name: symbol
+        tests: [not_null]
+      - name: candle_start_time
+        tests: [not_null]
+      - name: open_price
+        tests: [not_null]
+      - name: close_price
+        tests: [not_null]
+
+  - name: mart_pipeline_health
+    description: "Pipeline monitoring mart for freshness, completeness, and missing candles."
+    columns:
+      - name: symbol
+        tests: [not_null]
+      - name: freshness_status
+        tests: [not_null]
+
+  - name: mart_binance_vs_sentiment
+    description: "Daily BTC market metrics joined with Fear & Greed sentiment data."
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: symbol
+        tests: [not_null]
