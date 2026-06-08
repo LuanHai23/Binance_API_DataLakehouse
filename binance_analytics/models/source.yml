@@ -4,7 +4,16 @@ sources:
   - name: warehouse
     database: warehouse_db
     schema: public
+    description: "PostgreSQL warehouse storing Gold-level Binance market data, SCD symbol dimension, and sentiment data."
     tables:
       - name: fact_market_candles
+        description: "Gold-level OHLC candle fact table generated from Binance trade data."
+
+      - name: dim_symbol_scd
+        description: "SCD Type 2 dimension table storing Binance symbol metadata history."
+
       - name: fact_market_sentiment
-      - name: mart_market_overview
+        description: "Daily Fear and Greed Index loaded from external API."
+
+      - name: stg_market_candles
+        description: "Staging table used for idempotent upsert into fact_market_candles."

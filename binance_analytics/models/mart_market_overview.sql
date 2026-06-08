@@ -1,80 +1,72 @@
 {{ config(materialized='table') }}
 
--- Dashboard 1: Market Overview
--- Market overview by symbol in the last 24 hours
-
-WITH latest_candle AS (
+WITH watermark AS (
     SELECT
-        symbol,
-        close_price,
-        candle_start_time,
-        ROW_NUMBER() OVER (
-            PARTITION BY symbol
-            ORDER BY candle_start_time DESC
-        ) AS rn
+        MAX(candle_start_time) AS max_candle_time
     FROM {{ source('warehouse', 'fact_market_candles') }}
 ),
 
-first_candle_24h AS (
+base AS (
     SELECT
-        symbol,
-        open_price,
-        candle_start_time,
-        ROW_NUMBER() OVER (
-            PARTITION BY symbol
-            ORDER BY candle_start_time ASC
-        ) AS rn
-    FROM {{ source('warehouse', 'fact_market_candles') }}
-    WHERE candle_start_time >= NOW() - INTERVAL '24 hours'
+        f.*
+    FROM {{ source('warehouse', 'fact_market_candles') }} f
+    CROSS JOIN watermark w
+    WHERE f.candle_start_time >= w.max_candle_time - INTERVAL '24 hours'
 ),
 
-stats_24h AS (
+aggregated AS (
     SELECT
         symbol,
-        MAX(high_price) AS high_24h,
-        MIN(low_price) AS low_24h,
+        MAX(candle_start_time) AS last_updated,
         SUM(total_volume) AS volume_24h,
+        SUM(quote_volume) AS quote_volume_24h,
+        SUM(trade_count) AS trade_count_24h,
         SUM(buy_volume_taker) AS buy_volume_24h,
-        SUM(sell_volume_maker) AS sell_volume_24h,
-        SUM(trade_count) AS total_trades_24h
-    FROM {{ source('warehouse', 'fact_market_candles') }}
-    WHERE candle_start_time >= NOW() - INTERVAL '24 hours'
+        SUM(sell_volume_maker) AS sell_volume_24h
+    FROM base
     GROUP BY symbol
+),
+
+latest_price AS (
+    SELECT DISTINCT ON (symbol)
+        symbol,
+        close_price AS current_price
+    FROM base
+    ORDER BY symbol, candle_start_time DESC
+),
+
+first_price AS (
+    SELECT DISTINCT ON (symbol)
+        symbol,
+        open_price AS first_price_24h
+    FROM base
+    ORDER BY symbol, candle_start_time ASC
 )
 
 SELECT
-    s.symbol,
-    l.close_price AS current_price,
-    f.open_price AS open_price_24h,
-    s.high_24h,
-    s.low_24h,
+    a.symbol,
+    lp.current_price,
+    fp.first_price_24h,
 
     ROUND(
-        ((l.close_price - f.open_price) / NULLIF(f.open_price, 0) * 100)::numeric,
-        2
+        ((lp.current_price - fp.first_price_24h) / NULLIF(fp.first_price_24h, 0) * 100)::numeric,
+        4
     ) AS price_change_pct_24h,
 
-    ROUND(
-        (l.close_price - f.open_price)::numeric,
-        8
-    ) AS price_change_24h,
-
-    ROUND(s.volume_24h::numeric, 8) AS volume_24h,
-    ROUND(s.buy_volume_24h::numeric, 8) AS buy_volume_24h,
-    ROUND(s.sell_volume_24h::numeric, 8) AS sell_volume_24h,
+    a.volume_24h,
+    a.quote_volume_24h,
+    a.trade_count_24h,
 
     ROUND(
-        (s.buy_volume_24h / NULLIF(s.volume_24h, 0) * 100)::numeric,
+        (a.buy_volume_24h / NULLIF(a.volume_24h, 0) * 100)::numeric,
         2
     ) AS buy_ratio_pct,
 
-    s.total_trades_24h,
-    l.candle_start_time AS last_updated
+    a.last_updated
 
-FROM stats_24h s
-LEFT JOIN latest_candle l
-    ON s.symbol = l.symbol
-    AND l.rn = 1
-LEFT JOIN first_candle_24h f
-    ON s.symbol = f.symbol
-    AND f.rn = 1
+FROM aggregated a
+JOIN latest_price lp
+    ON a.symbol = lp.symbol
+JOIN first_price fp
+    ON a.symbol = fp.symbol
+ORDER BY a.quote_volume_24h DESC

@@ -1,3 +1,16 @@
+# binance_analytics:
+#   target: dev
+#   outputs:
+#     dev:
+#       type: postgres
+#       host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+#       user: "{{ env_var('POSTGRES_USER', 'admin') }}"
+#       password: "{{ env_var('POSTGRES_PASSWORD', 'adminpassword') }}"
+#       port: "{{ env_var('POSTGRES_PORT', '5433') | int }}"
+#       dbname: "{{ env_var('WAREHOUSE_DB', 'warehouse_db') }}"
+#       schema: public
+#       threads: 2
+
 binance_analytics:
   target: dev
   outputs:
@@ -6,21 +19,7 @@ binance_analytics:
       host: postgres
       user: admin
       password: adminpassword
-      port: 5432 #5433
+      port: 5432
       dbname: warehouse_db
       schema: public
-      threads: 1
-
-dbt_snowflake:
-  outputs:
-    dev:
-      account: dhgzdnn-qr32312
-      database: DEV_DB
-      password: 7QzfBVuHVKgn2mx
-      role: SYSADMIN
-      schema: DBT_DEV
-      threads: 4
-      type: snowflake
-      user: lunacbum
-      warehouse: DEV_WH
-  target: dev
+      threads: 2

@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: mart_market_overview
-    description: "Latest market snapshot and 24-hour statistics by symbol."
+    description: "Provides 24-hour market overview metrics by symbol, including current price, volume, buy ratio, and price change."
     columns:
       - name: symbol
         tests: [not_null, unique]
@@ -14,7 +14,7 @@ models:
         tests: [not_null]
 
   - name: mart_ohlc_summary
-    description: "1-minute OHLC candles enriched with hourly volume and buy-pressure metrics."
+    description: "Provides candle-level and hourly OHLC analytics with buy/sell pressure metrics."
     tests:
       - dbt_utils.expression_is_true:
           expression: "high_price >= low_price"
@@ -31,7 +31,7 @@ models:
         tests: [not_null]
 
   - name: mart_pipeline_health
-    description: "Pipeline monitoring mart for freshness, completeness, and missing candles."
+    description: "Monitors pipeline health, completeness, and freshness by symbol and hour."
     columns:
       - name: symbol
         tests: [not_null]
@@ -45,3 +45,89 @@ models:
         tests: [not_null]
       - name: symbol
         tests: [not_null]
+  
+  - name: mart_market_overview_enriched
+    description: "Enriches market overview with current Binance symbol metadata from SCD Type 2 dimension."
+    columns:
+      - name: symbol
+        tests:
+          - not_null
+          - unique
+
+      - name: base_asset
+        tests:
+          - not_null
+
+      - name: quote_asset
+        tests:
+          - not_null
+
+      - name: current_price
+        tests:
+          - not_null
+
+      - name: symbol_metadata_is_current
+        tests:
+          - not_null
+
+  - name: mart_data_freshness
+    description: "Monitors data freshness by symbol using global latest candle watermark."
+    columns:
+      - name: symbol
+        tests:
+          - not_null
+          - unique
+
+      - name: freshness_status
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Fresh', 'Stale', 'Dead', 'Missing']
+
+      - name: checked_at
+        tests:
+          - not_null
+  
+  - name: mart_symbol_liquidity
+    description: "Ranks symbols by liquidity using quote volume and trade activity."
+    columns:
+      - name: symbol
+        tests:
+          - not_null
+          - unique
+      - name: liquidity_rank
+        tests:
+          - not_null
+      - name: liquidity_level
+        tests:
+          - not_null
+
+  - name: mart_trade_pressure
+    description: "Analyzes hourly buy and sell pressure by trading symbol."
+    columns:
+      - name: symbol
+        tests:
+          - not_null
+      - name: candle_hour
+        tests:
+          - not_null
+      - name: pressure_signal
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Strong Buy Pressure', 'Strong Sell Pressure', 'Neutral']
+
+  - name: mart_volatility_signal
+    description: "Classifies hourly symbol volatility based on price range percentage."
+    columns:
+      - name: symbol
+        tests:
+          - not_null
+      - name: candle_hour
+        tests:
+          - not_null
+      - name: volatility_level
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['High Volatility', 'Medium Volatility', 'Low Volatility']
