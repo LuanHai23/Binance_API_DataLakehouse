@@ -62,7 +62,7 @@ This makes the project a complete data product, not just a data pipeline.
 # 📌 Project Metrics
 
 |Metric|Value|
-
+|---|---|
 |Kafka retained trade events during local testing| 3.7M+ |
 |PostgreSQL fact table rows| 3,600+ |
 |dbt models| 8 |
