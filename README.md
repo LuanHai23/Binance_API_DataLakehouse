@@ -21,6 +21,25 @@ The final output is not only stored data, but a set of dbt analytical marts and 
 - Volatility signals
 - Data freshness and pipeline health
 
+---
+
+# Business Output
+
+The final output of this project is a set of Metabase dashboards built on top of dbt analytical marts in PostgreSQL.
+
+These dashboards turn high-volume raw trade events into actionable insights for both market monitoring and pipeline reliability.
+
+### Market Analysis
+
+The Market Overview dashboard helps users answer:
+
+- Which trading symbols have the highest trading volume?
+- Which symbols are increasing or decreasing in price?
+- Which assets show stronger buy-side or sell-side activity?
+- What is the latest market condition by symbol?
+
+---
+
 ## 🏗️ Architecture
 ![Dashboard](./images/Binance_DataLakehouse_Architecture.png)
 
