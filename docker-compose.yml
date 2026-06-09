@@ -2,7 +2,10 @@ version: '3.8'
 
 x-airflow-common: &airflow-common
   #image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.7.1}
-  build: .
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow
+  image: binance-airflow:2.7.1
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://admin:adminpassword@postgres:5432/postgres
@@ -14,6 +17,7 @@ x-airflow-common: &airflow-common
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
+    - ./:/opt/project
     - ./requirements.txt:/requirements.txt
     - ./binance_analytics:/opt/airflow/dbt/crypto_analytics
     - ./kafka_producer:/opt/airflow/kafka_producer
@@ -28,9 +32,9 @@ services:
     image: postgres:13
     container_name: de_postgres
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: adminpassword
-      POSTGRES_DB: postgres # DB mặc định cho Airflow
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB} # DB mặc định cho Airflow
     ports:
       - "5433:5432"
     volumes:
@@ -50,8 +54,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     command: server /data --console-address ":9001"
     networks:
       - data-network
@@ -78,11 +82,25 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      # Internal dùng cổng 29092, External (localhost) dùng 9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - data-network
+  binance_producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.producer
+    container_name: binance_producer
+    env_file:
+      - .env
+    depends_on:
+      - kafka
+    volumes:
+      - ./kafka_producer:/app/kafka_producer
+    restart: unless-stopped
     networks:
       - data-network
 
@@ -110,12 +128,12 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1.5G # [FIX] Tăng lên > SPARK_WORKER_MEMORY
+          memory: 4G # [FIX] Tăng lên > SPARK_WORKER_MEMORY
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=1G
-      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=3G
+      - SPARK_WORKER_CORES=4
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_SSL_ENABLED=no
     depends_on:
@@ -125,6 +143,141 @@ services:
     volumes:
       - ./scripts:/opt/bitnami/spark/scripts # [FIX] Mount code vào worker
 
+  spark-worker-2:
+    image: public.ecr.aws/bitnami/spark:3.5
+    container_name: de_spark_worker_2
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=3G
+      - SPARK_WORKER_CORES=4
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    depends_on:
+      - spark-master
+    networks:
+      - data-network
+    volumes:
+      - ./scripts:/opt/bitnami/spark/scripts
+
+  spark-bronze-stream:
+    build:
+      context: .
+      dockerfile: dockerfile.spark
+    container_name: de_spark_bronze
+    environment:
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY= ${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY= ${MINIO_SECRET_KEY}
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC=crypto_trade_price_1
+      - BRONZE_OUTPUT_PATH=s3a://bronze/crypto_trades/
+      - BRONZE_CHECKPOINT_PATH=s3a://bronze/_checkpoints/crypto_trades/
+    command: >
+      spark-submit
+      --master spark://spark-master:7077
+      --total-executor-cores 2
+      --executor-memory 1G
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
+      /opt/bitnami/spark/scripts/spark_stream_bronze_ingestion_data.py
+    depends_on:
+      - spark-master
+      - kafka
+      - minio
+    networks:
+      - data-network
+    restart: "no"
+    volumes:
+      - ./scripts:/opt/bitnami/spark/scripts
+
+  spark-silver-stream:
+    build:
+      context: .
+      dockerfile: dockerfile.spark
+    container_name: de_spark_silver
+    environment:
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY= ${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY= ${MINIO_SECRET_KEY}
+      - BRONZE_OUTPUT_PATH=s3a://bronze/crypto_trades/
+      - SILVER_OUTPUT_PATH=s3a://silver/crypto_trades/
+      - SILVER_CHECKPOINT_PATH=s3a://silver/_checkpoints/crypto_trades/
+    command: >
+      spark-submit
+      --master spark://spark-master:7077
+      --total-executor-cores 1
+      --executor-memory 512m
+      --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
+      /opt/bitnami/spark/scripts/spark_stream_silver_transform_data.py
+    depends_on:
+      - spark-master
+      - minio
+    networks:
+      - data-network
+    restart: "no"
+    volumes:
+      - ./scripts:/opt/bitnami/spark/scripts
+
+  spark-gold-stream:
+    build:
+      context: .
+      dockerfile: dockerfile.spark
+    container_name: de_spark_gold
+    environment:
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - SILVER_OUTPUT_PATH=s3a://silver/crypto_trades/
+      - GOLD_OUTPUT_PATH=s3a://gold/market_candles/
+      - GOLD_CHECKPOINT_PATH=s3a://gold/_checkpoints/market_candles/
+    command: >
+      spark-submit
+      --master spark://spark-master:7077
+      --total-executor-cores 1
+      --executor-memory 512m
+      --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
+      /opt/bitnami/spark/scripts/spark_stream_gold_aggregate_modeling_data.py
+    depends_on:
+      - spark-master
+      - minio
+    networks:
+      - data-network
+    restart: "no"
+    volumes:
+      - ./scripts:/opt/bitnami/spark/scripts
+
+  load-gold-to-postgres:
+    build:
+      context: .
+      dockerfile: dockerfile.spark
+    container_name: de_load_gold_to_postgres
+    environment:
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - GOLD_OUTPUT_PATH=s3a://gold/market_candles/
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=warehouse_db
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    command: >
+      spark-submit
+      --master spark://spark-master:7077
+      --total-executor-cores 1
+      --executor-memory 512m
+      --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.postgresql:postgresql:42.6.0
+      /opt/bitnami/spark/scripts/load_gold_to_postgres.py
+    depends_on:
+      - spark-master
+      - minio
+      - postgres
+    networks:
+      - data-network
+    restart: "no"
+    volumes:
+      - ./scripts:/opt/bitnami/spark/scripts
+      
   # 5. ORCHESTRATION
   airflow-webserver:
     <<: *airflow-common
@@ -164,11 +317,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      MB_DB_TYPE: postgres
-      MB_DB_DBNAME: warehouse_db
-      MB_DB_PORT: 5432
-      MB_DB_USER: admin
-      MB_DB_PASS: adminpassword
+      MB_DB_TYPE: ${MB_DB_TYPE}
+      MB_DB_DBNAME: ${MB_DB_DBNAME}
+      MB_DB_PORT: ${MB_DB_PORT}
+      MB_DB_USER: ${MB_DB_USER}
+      MB_DB_PASS: ${MB_DB_PASS}
       MB_DB_HOST: ${MB_DB_HOST}
     networks:
       - data-network

@@ -1,15 +1,64 @@
-.env
-logs/
+# Git
+.git
+.gitignore
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
 .env
-airflow.db
+
+jar/
 *.jar
-*.json
+
+# Environment
+.env
 .env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+airflow/logs/
+dags/logs/
+
+# Data / checkpoints
+data/
+checkpoints/
+*.parquet
+*.csv
+*.jsonl
+
+# dbt
+binance_analytics/target/
+binance_analytics/dbt_packages/
+binance_analytics/logs/
 target/
 dbt_packages/
-logs/
 .user.yml
-.json
-target/
+
+# Notebook
+.ipynb_checkpoints/
+*.dbc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.pid
+
+# Airflow
+logs/
+airflow/logs/
+
+# Spark checkpoints / local output
+checkpoints/
+.spark-warehouse/
+
+# Secrets
+*.pem
+*.key

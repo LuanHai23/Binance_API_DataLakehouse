@@ -6,3 +6,8 @@ sqlalchemy
 psycopg2-binary
 dbt-core
 dbt-postgres
+dotenv
+gcsfs
+confluent-kafka
+websocket-client
+python-dotenv

@@ -1,0 +1,90 @@
+name: Binance Lakehouse CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  validate-project:
+    name: Validate Python, dbt, and YAML
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install validation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install dbt-postgres==1.10.0 PyYAML
+
+      - name: Check Python syntax
+        run: |
+          python -m compileall scripts dags
+
+      - name: Validate YAML files
+        run: |
+          python - << 'PY'
+          import yaml
+          from pathlib import Path
+
+          yaml_files = list(Path(".").rglob("*.yml")) + list(Path(".").rglob("*.yaml"))
+
+          for file in yaml_files:
+              if ".venv" in str(file) or "target" in str(file):
+                  continue
+
+              print(f"Checking YAML: {file}")
+              with open(file, "r", encoding="utf-8") as f:
+                  yaml.safe_load(f)
+
+          print("YAML validation passed.")
+          PY
+
+      - name: Create dbt CI profile
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << 'EOF'
+          binance_analytics:
+            target: ci
+            outputs:
+              ci:
+                type: postgres
+                host: localhost
+                user: admin
+                password: adminpassword
+                port: 5432
+                dbname: warehouse_db
+                schema: public
+                threads: 2
+          EOF
+
+      - name: Install dbt dependencies
+        working-directory: binance_analytics
+        run: |
+          dbt deps
+
+      - name: Parse dbt project
+        working-directory: binance_analytics
+        run: |
+          dbt parse
+
+      - name: Compile dbt project
+        working-directory: binance_analytics
+        run: |
+          dbt compile
