@@ -61,16 +61,16 @@ This makes the project a complete data product, not just a data pipeline.
 
 # 📌 Project Metrics
 
-| Metric | Value |
-| Kafka retained trade events during local testing | 3.7M+ |
-| PostgreSQL fact table rows| 3,600+ |
-| dbt models| 8 |
-| dbt data tests| 35 |
-| Main Airflow DAG tasks| 12 |
-| Metabase dashboards| 3 |
-| Data lake layers| Bronze, Silver, Gold |
-| Warehouse loading strategy| Staging + Upsert |
-| Pipeline mode| Local micro-batch architecture |
+|Metric| Value |
+|Kafka retained trade events during local testing| 3.7M+ |
+|PostgreSQL fact table rows| 3,600+ |
+|dbt models| 8 |
+|dbt data tests| 35 |
+|Main Airflow DAG tasks| 12 |
+|Metabase dashboards| 3 |
+|Data lake layers| Bronze, Silver, Gold |
+|Warehouse loading strategy| Staging + Upsert |
+|Pipeline mode| Local micro-batch architecture |
 
 These metrics are based on local development and testing runs. They may change depending on Kafka retention, pipeline frequency, and runtime duration.
 
