@@ -297,6 +297,7 @@ PostgreSQL is used as the serving warehouse for dbt and Metabase.
 Main tables:
 
 | Table | Purpose |
+|---|---|
 | stg_market_candles | Staging table for Gold data before upsert |
 | fact_market_candles | Main OHLC market candle fact table |
 | stg_symbol_metadata | Staging table for Binance symbol metadata |
@@ -401,6 +402,7 @@ If a quality gate fails, Airflow stops the pipeline before invalid data reaches 
 dbt is used to build analytical marts and enforce data tests.
 
 | Model | Purpose |
+|---|---|
 | mart_market_overview | Market overview by symbol |
 | mart_market_overview_enriched | Market overview enriched with SCD symbol metadata |
 | mart_ohlc_summary | OHLC candle summary |
@@ -412,13 +414,17 @@ dbt is used to build analytical marts and enforce data tests.
 
 Generate dbt documentation:
 
+```
 cd binance_analytics
 dbt docs generate
 dbt docs serve --port 8088
+```
 
 Open:
 
+```
 http://localhost:8088
+```
 
 ---
 
@@ -501,13 +507,19 @@ No Binance API key is required for public WebSocket trade streams.
 
 ### 1. Clone the repository
 
+```
 git clone https://github.com/LuanHai23/Binance_API_DataLakeHouse.git
+```
 
+```
 cd Binance_API_DataLakeHouse
+```
 
 ### 3. Configure environment variables
 
+```
 cp .env.example .env
+```
 
 Update values if needed:
 
@@ -528,11 +540,14 @@ POSTGRES_PASSWORD=adminpassword
 
 ### 3. Start all services
 
+```
 docker compose up -d
+```
 
 ### 4. Access services
 
 |Service | URL | Notes |
+|---|---|---|
 |Airflow | http://localhost:8081 | Pipeline orchestration|
 |MinIO | http://localhost:9001 | Data lake storage|
 |Metabase | http://localhost:3000 | BI dashboards|
@@ -562,12 +577,15 @@ docker exec -it de_postgres psql -U admin -d warehouse_db -c "SELECT COUNT(*), M
 
 ### 7. Run dbt manually
 
+```
 cd binance_analytics
 dbt run
 dbt test
+```
 
 # 📁 Project Structure
 
+```
 Binance_API_DataLakeHouse/
 ├── dags/
 │   ├── binance_lakehouse_pipeline_dag.py
@@ -622,6 +640,7 @@ Binance_API_DataLakeHouse/
 ├── .gitignore
 ├── requirements.txt
 └── README.md
+```
 
 📸 Screenshots
 Airflow Pipeline Success
