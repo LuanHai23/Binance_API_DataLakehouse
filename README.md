@@ -5,7 +5,7 @@ A end-to-end real-time data engineering project that ingests live cryptocurrency
 ---
 
 ## 🏗️ Architecture
-![Dashboard](./images/architecture.png)
+![Dashboard](./images/Binance_DataLakehouse_Architecture.png)
 
 ```
 Binance API
