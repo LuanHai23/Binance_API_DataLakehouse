@@ -96,7 +96,7 @@ Spark Bronze Ingestion
 MinIO Bronze Layer
     |
     V
-Spark Silver Transform │
+Spark Silver Transform
     |
     V
 MinIO Silver Layer
@@ -136,7 +136,7 @@ This project follows a local micro-batch lakehouse architecture:
 |---|---|
 |Data Source | Binance WebSocket API |
 |Ingestion | Python Kafka Producer |
-|Message Queue | Apache Kafka + ZooKeeper |
+|Message Queue | Apache Kafka | 
 |Processing	| Apache Spark / PySpark|
 |Data Lake | MinIO |
 |File Format | Parquet |
@@ -295,13 +295,13 @@ PostgreSQL is used as the serving warehouse for dbt and Metabase.
 
 Main tables:
 
-|Table | Purpose |
-|stg_market_candles| Staging table for Gold data before upsert|
-|fact_market_candles| Main OHLC market candle fact table|
-|stg_symbol_metadata| Staging table for Binance symbol metadata|
-|dim_symbol_scd| SCD Type 2 dimension for symbol metadata|
-|fact_market_sentiment| Daily Fear & Greed Index data|
-|pipeline_run_audit| Pipeline run audit log|
+| Table | Purpose |
+| stg_market_candles | Staging table for Gold data before upsert |
+| fact_market_candles | Main OHLC market candle fact table |
+| stg_symbol_metadata | Staging table for Binance symbol metadata |
+| dim_symbol_scd | SCD Type 2 dimension for symbol metadata |
+| fact_market_sentiment | Daily Fear & Greed Index data |
+| pipeline_run_audit | Pipeline run audit log |
 
 Primary fact grain:
 
@@ -397,15 +397,15 @@ If a quality gate fails, Airflow stops the pipeline before invalid data reaches 
 
 dbt is used to build analytical marts and enforce data tests.
 
-|Model| Purpose |
-|mart_market_overview| Market overview by symbol|
-|mart_market_overview_enriched| Market overview enriched with SCD symbol metadata|
-|mart_ohlc_summary| OHLC candle summary|
-|mart_symbol_liquidity|	Liquidity ranking|
-|mart_trade_pressure| Buy/sell pressure analysis|
-|mart_volatility_signal| Volatility classification|
-|mart_data_freshness| Data freshness monitoring|
-|mart_pipeline_health| Pipeline health monitoring|
+| Model | Purpose |
+| mart_market_overview | Market overview by symbol |
+| mart_market_overview_enriched | Market overview enriched with SCD symbol metadata |
+| mart_ohlc_summary | OHLC candle summary |
+| mart_symbol_liquidity |	Liquidity ranking |
+| mart_trade_pressure | Buy/sell pressure analysis |
+| mart_volatility_signal | Volatility classification |
+| mart_data_freshness | Data freshness monitoring |
+| mart_pipeline_health | Pipeline health monitoring |
 
 Generate dbt documentation:
 
@@ -419,10 +419,11 @@ http://localhost:8088
 
 ---
 
-📊 Dashboards
+# 📊 Dashboards
+
 The final output of this project is a set of Metabase dashboards.
 
-1. Binance Market Overview
+## 1. Binance Market Overview
 
 This dashboard provides a high-level view of market activity by symbol.
 
@@ -440,9 +441,7 @@ Business questions answered:
 - Which symbols have the strongest price movement?
 - Which symbols show higher buy-side pressure?
 
-![Dashboard](./images/Binance_Market_Overview.png)
-
-2. Liquidity & Volatility Analysis
+## 2. Liquidity & Volatility Analysis
 
 This dashboard analyzes liquidity ranking, quote volume, buy/sell pressure, and volatility signals across symbols.
 
@@ -462,10 +461,7 @@ Business questions answered:
 - Is buy pressure or sell pressure stronger?
 - Which symbols may require closer monitoring?
 
-![Dashboard](./images/Liquidity_Volatility_Analysis_1.png)
-![Dashboard](./images/Liquidity_Volatility_Analysis_2.png)
-
-3. Pipeline Health Monitoring
+## 3. Pipeline Health Monitoring
 
 This dashboard monitors data freshness, pipeline health, audit logs, and failed/retried tasks.
 
@@ -484,9 +480,9 @@ Engineering questions answered:
 - Did the pipeline complete successfully?
 - Which task failed or retried recently?
 
-![Dashboard](./images/Binance_Pipeline_Health_Monitoring.png)
+---
 
-🚀 Getting Started
+# 🚀 Getting Started
 
 Prerequisites
 
@@ -500,11 +496,14 @@ No Binance API key is required for public WebSocket trade streams.
 
 ---
 
-1. Clone the repository
+### 1. Clone the repository
+
 git clone https://github.com/LuanHai23/Binance_API_DataLakeHouse.git
+
 cd Binance_API_DataLakeHouse
 
-3. Configure environment variables
+### 3. Configure environment variables
+
 cp .env.example .env
 
 Update values if needed:
@@ -512,6 +511,7 @@ Update values if needed:
 KAFKA_BOOTSTRAP_SERVERS=kafka:29092
 KAFKA_TOPIC=crypto_trade_price_1
 
+```
 MINIO_ENDPOINT=http://minio:9000
 MINIO_ACCESS_KEY=minio_admin
 MINIO_SECRET_KEY=minio_password
@@ -521,16 +521,22 @@ POSTGRES_PORT=5432
 POSTGRES_DB=warehouse_db
 POSTGRES_USER=admin
 POSTGRES_PASSWORD=adminpassword
-3. Start all services
+```
+
+### 3. Start all services
+
 docker compose up -d
-4. Access services
-Service	URL	Notes
-Airflow	http://localhost:8081	Pipeline orchestration
-MinIO	http://localhost:9001	Data lake storage
-Metabase	http://localhost:3000	BI dashboards
-Spark UI	http://localhost:8080	Spark cluster UI
-PostgreSQL	localhost:5433 or container network postgres:5432	Warehouse
-5. Run the pipeline
+
+### 4. Access services
+
+|Service | URL | Notes |
+|Airflow | http://localhost:8081 | Pipeline orchestration|
+|MinIO | http://localhost:9001 | Data lake storage|
+|Metabase | http://localhost:3000 | BI dashboards|
+|Spark UI | http://localhost:8080 | Spark cluster UI|
+|PostgreSQL | localhost:5433 or container network postgres:5432 | Warehouse|
+
+### 5. Run the pipeline
 
 Trigger the main Airflow DAG:
 
@@ -542,11 +548,17 @@ market_sentiment_daily
 
 Or run from PowerShell:
 
+```
 .\scripts\run_full_pipeline.ps1
 .\scripts\run_sentiment_pipeline.ps1
-6. Check warehouse data
+```
+
+### 6. Check warehouse data
+
 docker exec -it de_postgres psql -U admin -d warehouse_db -c "SELECT COUNT(*), MIN(candle_start_time), MAX(candle_start_time) FROM public.fact_market_candles;"
-7. Run dbt manually
+
+### 7. Run dbt manually
+
 cd binance_analytics
 dbt run
 dbt test
@@ -600,42 +612,48 @@ Binance_API_DataLakeHouse/
 │   └── dbt_tests_success.png
 ├── docker-compose.yml
 ├── Dockerfile.airflow
-├── dockerfile.spark
+├── Dockerfile.spark
+├── Dockerfile.producer
+├── dockerfile
 ├── .env.example
 ├── .gitignore
+├── requirements.txt
 └── README.md
+
 📸 Screenshots
 Airflow Pipeline Success
 
-
+![Dashboard](./images/DAGs.png)
 
 
 dbt Lineage
 
-
+![Dashboard](./images/dbt_lineage_graph.png)
 
 
 dbt Test Success
 
+![Dashboard](./images/dbt_tests_success_1.png)
 
-
+![Dashboard](./images/dbt_tests_success_2.png)
 
 Metabase Market Overview
 
-
-
+![Dashboard](./images/Binance_Market_Overview.png)
 
 Metabase Liquidity & Volatility
 
-
-
+![Dashboard](./images/Liquidity_Volatility_Analysis_1.png)
+![Dashboard](./images/Liquidity_Volatility_Analysis_2.png)
 
 Metabase Pipeline Health
 
+![Dashboard](./images/Binance_Pipeline_Health_Monitoring.png)
 
+---
 
+# 🧠 Key Engineering Decisions
 
-🧠 Key Engineering Decisions
 Why use Kafka?
 
 Kafka acts as a buffer between the Binance producer and the Spark processing layer. This allows the ingestion layer and processing layer to be decoupled.
@@ -660,37 +678,40 @@ Why use Metabase?
 
 Metabase provides the final business-facing output of the project. It allows users to explore market data, monitor liquidity and volatility, and track pipeline health through dashboards.
 
-⚠️ Known Limitations
-This project is designed for local development and portfolio demonstration, not cloud production deployment.
-Kafka, Spark, MinIO, PostgreSQL, Airflow, and Metabase are deployed locally using Docker Compose.
-The pipeline uses micro-batch processing instead of fully continuous end-to-end streaming.
-No schema registry is implemented for Kafka message validation.
-No cloud object storage or managed orchestration service is used.
-Monitoring is implemented through Airflow logs, audit tables, dbt tests, and Metabase dashboards, not Prometheus/Grafana.
-Security hardening such as HTTPS, secret manager integration, and role-based access control is not implemented.
-🔮 Future Improvements
-Deploy the pipeline on a cloud platform such as Azure or AWS.
-Replace local MinIO with cloud object storage.
-Add a schema registry for Kafka message validation.
-Add Prometheus and Grafana for infrastructure-level monitoring.
-Add Slack or Discord alerts for failed Airflow tasks.
-Add Great Expectations for declarative data quality checks.
-Add Apache Iceberg or Delta Lake for ACID table management.
-Add CI/CD checks for Python, dbt, and Docker.
-Add anomaly detection for abnormal volume, volatility, and price movement.
-📄 CV Summary
-Binance Real-Time Data Lakehouse | Kafka, Spark, MinIO, PostgreSQL, dbt, Airflow, Metabase, Docker
-- Built a local production-style data lakehouse that ingests Binance WebSocket trade events into Kafka and processes them through Spark Bronze/Silver/Gold layers on MinIO.
-- Processed 3.7M+ Kafka trade events during local testing and transformed raw JSON trades into OHLC market candles for analytics.
-- Designed an idempotent warehouse loading process using PostgreSQL staging tables and ON CONFLICT upsert, preventing duplicate fact records during Airflow retries.
-- Built 8 dbt analytical marts and 35 dbt tests for market overview, OHLC summary, liquidity ranking, trade pressure, volatility, data freshness, and pipeline health.
-- Created 3 Metabase dashboards to monitor market activity, liquidity/volatility signals, and pipeline health.
-- Implemented data quality gates, SCD Type 2 symbol metadata tracking, audit logging, and freshness monitoring to make the pipeline more production-like.
-⚠️ Disclaimer
+---
+
+# ⚠️ Known Limitations
+
+- This project is designed for local development and portfolio demonstration, not cloud production deployment.
+- Kafka, Spark, MinIO, PostgreSQL, Airflow, and Metabase are deployed locally using Docker Compose.
+- The pipeline uses micro-batch processing instead of fully continuous end-to-end streaming.
+- No schema registry is implemented for Kafka message validation.
+- No cloud object storage or managed orchestration service is used.
+- Monitoring is implemented through Airflow logs, audit tables, dbt tests, and Metabase dashboards, not Prometheus/Grafana.
+- Security hardening such as HTTPS, secret manager integration, and role-based access control is not implemented.
+
+---
+
+# 🔮 Future Improvements
+- Deploy the pipeline on a cloud platform such as Azure or AWS.
+- Replace local MinIO with cloud object storage.
+- Add a schema registry for Kafka message validation.
+- Add Prometheus and Grafana for infrastructure-level monitoring.
+- Add Slack or Discord alerts for failed Airflow tasks.
+- Add Great Expectations for declarative data quality checks.
+- Add Apache Iceberg or Delta Lake for ACID table management.
+- Add CI/CD checks for Python, dbt, and Docker.
+- Add anomaly detection for abnormal volume, volatility, and price movement.
+
+---
+
+# ⚠️ Disclaimer
 
 This project is for educational and portfolio purposes only. It is not financial advice and should not be used for real trading decisions.
 
-🤝 Let's Connect
+---
+
+# 🤝 Let's Connect
 
 This project is a milestone in my journey toward becoming a Data Engineer. Building this end-to-end lakehouse helped me strengthen my skills in distributed processing, data orchestration, warehouse modeling, and analytical dashboarding.
 
@@ -698,146 +719,9 @@ I am currently open to Fresher Data Engineer and Data Engineer Intern opportunit
 
 LinkedIn: Hải Luân Nguyễn Ngọc
 Email: nguyenngochailuan16112003@gmail.com
-🌟 Explore More
+
+# 🌟 Explore More
 
 If you liked this project, feel free to check out my other Data Engineering projects:
 
 DataLens Lakehouse — Vietnam IT Job Market Data Lakehouse
-## 📊 Dashboards
-
-### 1. Market Overview
-- Current price, 24h price change %, High/Low per symbol
-- Buy vs Sell volume ratio
-- Total trades per symbol
-  
-![Dashboard](./images/mark_overview.png)
-
-### 2. OHLC Candlestick Summary
-- Open / High / Low / Close per minute
-- Bullish vs Bearish candle distribution
-- Buy pressure % per hour heatmap
-  
-![Dashboard](./images/OHLC_Analysis.png)
-
-### 3. Pipeline Health Monitoring
-- Data freshness status (Fresh ✅ / Stale ⚠️ / Dead ❌)
-- Candle completeness % per hour
-- Missing candles detection
-
-![Dashboard](./images/Pipline_heal.png)
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Docker & Docker Compose
-- Binance API Key (free at binance.com)
-
-### 1. Clone the repo
-```bash
-git clone https://github.com/your-username/Binance_API_DataLakeHouse.git
-cd Binance_API_DataLakeHouse
-```
-
-### 2. Configure environment variables
-```bash
-cp .env.example .env
-# Fill in your Binance API keys and MinIO credentials
-```
-
-### 3. Start all services
-```bash
-docker compose up -d
-```
-
-### 4. Access the services
-
-| Service | URL | Credentials |
-|---|---|---|
-| Airflow | http://localhost:8081 | admin / admin |
-| MinIO | http://localhost:9001 | see .env |
-| Metabase | http://localhost:3000 | your setup |
-| Spark UI | http://localhost:8080 | - |
-
-### 5. Run the pipeline
-
-1. Open Airflow at `http://localhost:8081`
-2. Enable and trigger `medalion_dag` — runs Bronze → Silver → Gold
-3. Enable and trigger `dbt_transform_daily` — builds data marts
-4. Open Metabase to view dashboards
-
----
-
-## 📁 Project Structure
-
-```
-├── dags/                        # Airflow DAGs
-│   ├── medalion_dag.py          # Bronze → Silver → Gold pipeline
-│   ├── dbt_dag.py               # dbt transformation
-│   ├── hourly_batch_data.py     # Hourly batch ingestion
-│   └── sentiment_dag.py        # Sentiment data pipeline
-├── scripts/                     # Spark jobs
-│   ├── spark_stream_bronze_ingestion_data.py
-│   ├── spark_stream_silver_cleaning_data.py
-│   └── spark_stream_gold_aggregate_modeling_data.py
-├── binance_analytics/           # dbt project
-│   ├── models/
-│   │   ├── mart_market_overview.sql
-│   │   ├── mart_ohlc_summary.sql
-│   │   └── mart_pipeline_health.sql
-│   └── dbt_project.yml
-├── kafka_producer/              # Binance WebSocket producer
-├── scripts/init.sql             # PostgreSQL schema initialization
-├── Dockerfile                   # Airflow custom image
-├── dockerfile.spark             # Spark custom image
-├── docker-compose.yml
-└── requirements.txt
-```
-
----
-
-## 🔄 Data Flow
-
-### Bronze Layer
-Raw trade data from Binance WebSocket API, stored as Parquet in MinIO.
-```
-{ symbol, price, quantity, trade_timestamp, is_buyer_maker }
-```
-
-### Silver Layer
-Cleaned and partitioned by year/month/day/hour, stored in MinIO.
-
-### Gold Layer
-1-minute OHLC candles aggregated by Spark, written to PostgreSQL.
-```
-{ candle_start_time, symbol, open, high, low, close, volume, buy_volume, sell_volume, trade_count }
-```
-
-### Mart Layer (dbt)
-Business-ready tables optimized for Metabase dashboards.
-
----
-
-## ⚠️ Known Limitations
-
-- dbt runs on batch schedule (not real-time streaming)
-- Single Spark worker — not production-scale
-- No HTTPS / authentication hardening (local dev only)
-
----
-
-⚠️This project is for educational purposes only and is intended to showcase my skills on my CV.
-
-## 🤝 Let's Connect!
-
-This project is a significant milestone in my journey as a **Data Engineer**. Building this End-to-End Lakehouse from scratch has solidified my skills in distributed processing, data orchestration, and system architecture.
-
-I am currently open to **Fresher Data Engineer** opportunities. If you find this project interesting, have any feedback, or want to discuss data architectures, I would love to connect with you!
-
-* 💼 **LinkedIn:** [(https://www.linkedin.com/in/h%E1%BA%A3i-lu%C3%A2n-nguy%E1%BB%85n-ng%E1%BB%8Dc-67098531a/)]
-* 📧 **Email:** [nguyenngochailuan16112003@gmail.com]
-
-### 🌟 Explore More
-If you liked this project, feel free to check out my other Data Engineering works on my profile:
-* ⚡ **[DataLens_Lakehouse]** - Data Lakehouse: Vietnam IT Job Market.
