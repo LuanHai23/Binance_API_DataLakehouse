@@ -38,6 +38,42 @@ The Market Overview dashboard helps users answer:
 - Which assets show stronger buy-side or sell-side activity?
 - What is the latest market condition by symbol?
 
+### Liquidity & Volatility Analysis
+
+The Liquidity & Volatility dashboard helps users analyze:
+
+- Which symbols have the strongest liquidity?
+- Which symbols show abnormal volatility?
+- How buy pressure and sell pressure change over time.
+- Which symbols may require closer monitoring.
+
+### Pipeline Monitoring
+
+The Pipeline Health dashboard helps data engineers monitor:
+
+- Whether the data is fresh or stale.
+- Whether expected symbols are missing.
+- Whether pipeline runs completed successfully.
+- Whether data quality checks passed across Bronze, Silver, and Gold layers.
+
+This makes the project a complete data product, not just a data pipeline.
+---
+
+# Project Metrics
+
+| Metric | Value |
+| Kafka retained trade events during local testing | 3.7M+ |
+| PostgreSQL fact table rows| 3,600+ |
+| dbt models| 8 |
+| dbt data tests| 35 |
+| Main Airflow DAG tasks| 12 |
+| Metabase dashboards| 3 |
+| Data lake layers| Bronze, Silver, Gold |
+| Warehouse loading strategy| Staging + Upsert |
+| Pipeline mode| Local micro-batch architecture |
+
+These metrics are based on local development and testing runs. They may change depending on Kafka retention, pipeline frequency, and runtime duration.
+
 ---
 
 ## 🏗️ Architecture
@@ -64,6 +100,10 @@ dbt (Data Marts)
     ▼
 Metabase (Dashboard)
 ```
+
+# Project Metrics
+
+Metric
 
 **Orchestration:** Apache Airflow  
 **Storage:** MinIO (Data Lake) + PostgreSQL (Data Warehouse)
