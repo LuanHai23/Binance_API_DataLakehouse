@@ -320,6 +320,7 @@ The project uses a staging table and PostgreSQL upsert logic to make warehouse l
 Flow:
 
 Gold Parquet
+
 → PostgreSQL stg_market_candles
 → INSERT ... ON CONFLICT DO UPDATE
 → PostgreSQL fact_market_candles
@@ -336,7 +337,8 @@ The dimension table preserves historical changes in symbol attributes instead of
 
 Tracked metadata includes:
 
--Symbol
+Symbol
+
 - Base asset
 - Quote asset
 - Status
@@ -633,9 +635,9 @@ dbt Lineage
 
 dbt Test Success
 
-![Dashboard](./images/dbt_tests_success_1.png)
+![Dashboard](./binance_analytics/docs/image/dbt_tests_success_1.png)
 
-![Dashboard](./images/dbt_tests_success_2.png)
+![Dashboard](./binance_analytics/docs/image/dbt_tests_success_2.png)
 
 Metabase Market Overview
 
