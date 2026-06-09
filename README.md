@@ -1,8 +1,25 @@
 # 🪙 Binance Real-Time Data Lakehouse
 
-A end-to-end real-time data engineering project that ingests live cryptocurrency trade data from Binance API, processes it through a Medallion Architecture (Bronze → Silver → Gold), and visualizes it in Metabase.
+A production-style local Data Engineering project that ingests live cryptocurrency trade data from Binance WebSocket API, streams it through Kafka, processes it with Apache Spark using a Medallion Architecture, stores data in MinIO and PostgreSQL, builds analytical marts with dbt, orchestrates the workflow with Apache Airflow, and visualizes business-ready insights in Metabase.
+
+This project demonstrates practical Data Engineering skills including streaming ingestion, micro-batch processing, data lake design, warehouse modeling, idempotent loading, data quality gates, SCD Type 2, pipeline audit logging, data freshness monitoring, dbt testing, and BI dashboarding.
 
 ---
+
+# 🎯 Problem Statement
+
+Cryptocurrency trade data is generated continuously at high frequency and is difficult to analyze directly from raw streaming events. Raw Binance WebSocket messages are semi-structured, high-volume, and not suitable for business analysis without proper ingestion, validation, transformation, aggregation, and monitoring.
+
+This project solves that problem by building a local production-style data lakehouse that transforms raw Binance trade events into analytics-ready market indicators and operational dashboards.
+
+The final output is not only stored data, but a set of dbt analytical marts and Metabase dashboards that help users monitor:
+
+- Market overview by trading symbol
+- Current price, trading volume, and price change
+- Liquidity ranking across crypto pairs
+- Buy/sell trade pressure
+- Volatility signals
+- Data freshness and pipeline health
 
 ## 🏗️ Architecture
 ![Dashboard](./images/Binance_DataLakehouse_Architecture.png)
