@@ -43,11 +43,15 @@ def fetch_sentiment_data():
         # Kỹ thuật UPSERT (Update if exists, Insert if new)
         # Giúp script chạy lại nhiều lần mà không bị lỗi trùng lặp
         query = """
-            INSERT INTO fact_market_sentiment (date, fng_value, fng_classification)
+            INSERT INTO public.fact_market_sentiment (
+                date,
+                fng_value,
+                fng_classification
+            )
             VALUES (%s, %s, %s)
-            ON CONFLICT (date) 
-            DO UPDATE SET 
-                fng_value = EXCLUDED.fng_value, 
+            ON CONFLICT (date)
+            DO UPDATE SET
+                fng_value = EXCLUDED.fng_value,
                 fng_classification = EXCLUDED.fng_classification,
                 updated_at = CURRENT_TIMESTAMP;
         """
