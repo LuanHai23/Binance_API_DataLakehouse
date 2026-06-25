@@ -650,7 +650,7 @@ Airflow Pipeline Success
 
 dbt Lineage
 
-![Dashboard](./binance_analytics/images/dbt_lineage_graph.png)
+![Dashboard](./binance_analytics/docs/images/dbt_lineage_graph.png)
 
 
 dbt Test Success
