@@ -657,7 +657,7 @@ dbt Test Success
 
 ![Dashboard](./binance_analytics/docs/image/dbt_tests_success_1.png)
 
-![Dashboard](./binance_analytics/docs/image/dbt_tests_success_2.png)
+![Dashboard](./binance_analytics/docs/image/dbt_test_success_2.png)
 
 Metabase Market Overview
 
