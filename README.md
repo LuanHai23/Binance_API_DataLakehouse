@@ -79,7 +79,7 @@ These metrics are based on local development and testing runs. They may change d
 
 ## 🏗️ Architecture
 
-![Dashboard](./images/Binance_DataLakehouse_Architecture.png)
+![Dashboard](./images/image.png)
 
 ```
 Binance WebSocket API
