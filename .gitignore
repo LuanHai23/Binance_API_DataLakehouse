@@ -1,6 +1,6 @@
 # Git
-.git
-.gitignore
+#.git
+#.gitignore
 
 # Python
 __pycache__/
@@ -62,3 +62,19 @@ checkpoints/
 # Secrets
 *.pem
 *.key
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
