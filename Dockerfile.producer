@@ -1,10 +1,20 @@
 FROM python:3.11-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
 WORKDIR /app
 
-COPY requirements-producer.txt .
+RUN addgroup --system app \
+    && adduser --system --ingroup app --home /home/app app
 
-RUN pip install --no-cache-dir -r requirements-producer.txt
+COPY requirements-producer.txt ./
+RUN pip install --requirement requirements-producer.txt
+
+COPY --chown=app:app kafka_producer/ ./kafka_producer/
+
+USER app
 
 CMD ["python", "-u", "kafka_producer/Binance_kafka_producer.py"]
-
