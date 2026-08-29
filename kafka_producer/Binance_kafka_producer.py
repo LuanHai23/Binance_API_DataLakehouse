@@ -1,12 +1,13 @@
 import json
 import os
 import time
-from datetime import datetime
 
 import websocket
 from dotenv import load_dotenv
 from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient, NewTopic
+
+from kafka_producer.event_contract import build_agg_trade_event
 
 load_dotenv()
 
@@ -81,24 +82,12 @@ def on_message(ws, message) -> None:
 
         data = raw_msg["data"]
 
-        processed_data = {
-            "source": "binance_aggTrade",
-            "event_type": data.get("e"),
-            "symbol": data.get("s"),
-            "trade_id": data.get("a"),
-            "price": float(data.get("p")),
-            "quantity": float(data.get("q")),
-            "first_trade_id": data.get("f"),
-            "last_trade_id": data.get("l"),
-            "trade_time": data.get("T"),
-            "is_buyer_maker": data.get("m"),
-            "ingested_at": datetime.utcnow().isoformat(),
-        }
+        processed_data = build_agg_trade_event(data)
 
         producer.produce(
             topic=KAFKA_TOPIC,
             key=processed_data["symbol"],
-            value=json.dumps(processed_data),
+            value=json.dumps(processed_data,allow_nan=False,separators=(",", ":")),
             callback=delivery_report,
         )
 

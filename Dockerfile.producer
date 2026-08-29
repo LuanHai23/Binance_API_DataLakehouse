@@ -17,4 +17,4 @@ COPY --chown=app:app kafka_producer/ ./kafka_producer/
 
 USER app
 
-CMD ["python", "-u", "kafka_producer/Binance_kafka_producer.py"]
+CMD ["python", "-u", "-m", "kafka_producer.Binance_kafka_producer"]
