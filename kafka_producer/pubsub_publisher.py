@@ -16,7 +16,6 @@ class PubSubPublisher:
         client=None,
         publish_timeout_seconds: float = 30.0,
     ) -> None:
-        # Strict configuration validation.
         if not isinstance(project_id, str) or not project_id.strip():
             raise ValueError(
                 "project_id must be a non-empty string"
@@ -63,7 +62,6 @@ class PubSubPublisher:
         self._closed = False
 
     def publish(self, event: Mapping[str, Any]) -> None:
-        # Fail fast once the publisher has been closed.
         with self._lock:
             if self._closed:
                 raise RuntimeError(
@@ -77,7 +75,6 @@ class PubSubPublisher:
                     f"{self._publish_error}"
                 )
 
-        # Validate required attributes.
         event_id = event.get("event_id")
         symbol = event.get("symbol")
         schema_version = event.get("schema_version")
@@ -92,9 +89,6 @@ class PubSubPublisher:
                 "event['symbol'] must be a non-empty string"
             )
 
-        # Canonical contract:
-        # schema_version must be a positive integer, but bool
-        # must be rejected because bool is a subclass of int.
         if (
             isinstance(schema_version, bool)
             or not isinstance(schema_version, int)
@@ -104,7 +98,6 @@ class PubSubPublisher:
                 "event['schema_version'] must be a positive integer"
             )
 
-        # Use normalized values for Pub/Sub attributes.
         event_id = event_id.strip()
         symbol = symbol.strip()
 
@@ -118,7 +111,6 @@ class PubSubPublisher:
             schema_version=str(schema_version),
         )
 
-        # Register the future before attaching the callback.
         with self._lock:
             self._pending_futures.add(future)
 
@@ -127,12 +119,6 @@ class PubSubPublisher:
         )
 
     def _publish_done_callback(self, future) -> None:
-        """
-        Handle asynchronous Pub/Sub publish completion.
-
-        The first publish error is preserved.
-        The future is always removed from the pending set.
-        """
         try:
             future.result()
 
@@ -146,24 +132,19 @@ class PubSubPublisher:
                 self._pending_futures.discard(future)
 
     def close(self) -> None:
-        # Closing must happen exactly once.
         with self._lock:
             if self._closed:
                 return
 
             self._closed = True
 
-        # Stop accepting new Pub/Sub work and stop the
-        # background batching publisher.
         self.client.stop()
 
-        # Snapshot pending futures after stop().
         with self._lock:
             pending = list(self._pending_futures)
 
         first_close_error = None
 
-        # Drain every pending future even if one fails.
         for future in pending:
             try:
                 future.result(
@@ -178,7 +159,6 @@ class PubSubPublisher:
                 with self._lock:
                     self._pending_futures.discard(future)
 
-        # Prefer the original asynchronous publish error.
         with self._lock:
             publish_error = self._publish_error
 
