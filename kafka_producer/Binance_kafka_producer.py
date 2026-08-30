@@ -1,113 +1,64 @@
 import json
 import os
 import time
+from functools import partial
 
 import websocket
 from dotenv import load_dotenv
-from confluent_kafka import Producer
-from confluent_kafka.admin import AdminClient, NewTopic
 
 from kafka_producer.event_contract import build_agg_trade_event
+from kafka_producer.kafka_publisher import KafkaPublisher
+from kafka_producer.publisher import EventPublisher
+
 
 load_dotenv()
 
-# Cấu hình của Kafka
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
 
-# Danh sách các coin btc, eth, bnb, sol, xrp, ada, doge, shib
-SYMBOLS = ['btcusdt', 'ethusdt', 'bnbusdt', 'solusdt', 'xrpusdt', 'adausdt', 'dogeusdt','shibusdt']
-# URL Combined 
-stream_string = "/".join([f"{symbol}@aggTrade" for symbol in SYMBOLS])
+SYMBOLS = ["btcusdt","ethusdt","bnbusdt","solusdt","xrpusdt","adausdt","dogeusdt","shibusdt",
+]
 
-# Dùng endpoint '/stream?streams=' thay vì '/ws/'
-BINANCE_SOCKET = f'wss://stream.binance.com:9443/stream?streams={stream_string}'
+stream_string = "/".join(
+    f"{symbol}@aggTrade"
+    for symbol in SYMBOLS
+)
 
-# Tạo topic nếu chưa tồn tại
-def create_topic() -> None:
-    admin_client = AdminClient(
-        {"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS}
-    )
-
-    metadata = admin_client.list_topics(timeout=10)
-
-    if KAFKA_TOPIC in metadata.topics:
-        print(f"Kafka topic already exists: {KAFKA_TOPIC}")
-        return
-
-    topic_list = [
-        NewTopic(
-            KAFKA_TOPIC,
-            num_partitions=1,
-            replication_factor=1
-        )
-    ]
-
-    futures = admin_client.create_topics(topic_list)
-
-    for topic, future in futures.items():
-        try:
-            future.result()
-            print(f"Kafka topic created: {topic}")
-        except Exception as e:
-            print(f"Failed to create topic {topic}: {e}")
-
-#Producer
-producer_conf = {
-    "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
-    "client.id": "binance-aggtrade-producer",
-    "queue.buffering.max.messages": 1000000,
-    "queue.buffering.max.ms": 1000,
-    "compression.type": "snappy",
-    "acks": "all",
-}
-
-producer = Producer(producer_conf)
+BINANCE_SOCKET = (
+    f"wss://stream.binance.com:9443/stream?streams={stream_string}"
+)
 
 msg_count = 0
 
-def delivery_report(err, msg) -> None:
-    if err is not None:
-        print(f"Message delivery failed: {err}")
-
-
-def on_message(ws, message) -> None:
+def on_message(
+    ws,
+    message: str,
+    *,
+    publisher: EventPublisher,
+) -> None:
     global msg_count
 
     try:
         raw_msg = json.loads(message)
 
-        if "data" not in raw_msg:
+        if not isinstance(raw_msg, dict) or "data" not in raw_msg:
             return
 
-        data = raw_msg["data"]
-
-        processed_data = build_agg_trade_event(data)
-
-        producer.produce(
-            topic=KAFKA_TOPIC,
-            key=processed_data["symbol"],
-            value=json.dumps(processed_data,allow_nan=False,separators=(",", ":")),
-            callback=delivery_report,
+        processed_data = build_agg_trade_event(
+            raw_msg["data"]
         )
 
-        # Trigger delivery callbacks
-        producer.poll(0)
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        print(f"Invalid Binance message: {exc}")
+        return
 
-        msg_count += 1
+    # Transport errors must not be swallowed.
+    publisher.publish(processed_data)
 
-        if msg_count % 100 == 0:
-            print(
-                f"Produced {msg_count} messages "
-                f"to topic={KAFKA_TOPIC}"
-            )
+    msg_count += 1
 
-    except BufferError:
-        print("Kafka producer queue is full. Flushing...")
-        producer.flush()
-
-    except Exception as e:
-        print(f"Error processing message: {e}")
+    if msg_count % 100 == 0:
+        print(f"Published {msg_count} messages")
 
 
 def on_error(ws, error) -> None:
@@ -116,48 +67,75 @@ def on_error(ws, error) -> None:
 
 def on_close(ws, close_status_code, close_msg) -> None:
     print(
-        f"WebSocket closed. "
+        "WebSocket closed. "
         f"status={close_status_code}, message={close_msg}"
     )
-    producer.flush()
 
 
 def on_open(ws) -> None:
-    print(f"Connected to Binance WebSocket")
+    print("Connected to Binance WebSocket")
     print(f"Socket: {BINANCE_SOCKET}")
-    print(f"Kafka bootstrap servers: {KAFKA_BOOTSTRAP_SERVERS}")
-    print(f"Kafka topic: {KAFKA_TOPIC}")
 
-
-if __name__ == "__main__":
-    print("Starting Binance Kafka Producer...")
-
-    create_topic()
-
+def run(publisher: EventPublisher) -> None:
     while True:
-        try:
-            ws = websocket.WebSocketApp(
-                BINANCE_SOCKET,
-                on_open=on_open,
-                on_message=on_message,
-                on_error=on_error,
-                on_close=on_close,
-            )
+        ws_app = websocket.WebSocketApp(
+            BINANCE_SOCKET,
+            on_open=on_open,
+            on_message=partial(
+                on_message,
+                publisher=publisher,
+            ),
+            on_error=on_error,
+            on_close=on_close,
+        )
 
-            ws.run_forever(
+        try:
+            ws_app.run_forever(
                 ping_interval=20,
-                ping_timeout=10
+                ping_timeout=10,
             )
 
         except KeyboardInterrupt:
-            print("Interrupted by user, closing producer...")
-            break
+            raise
 
-        except Exception as e:
-            print(f"Error creating WebSocketApp: {e}")
-            print("Retrying in 5 seconds...")
-            time.sleep(5)
+        except Exception as exc:
+            print(f"WebSocket runtime error: {exc}")
 
-    print("Flushing producer...")
-    producer.flush()
-    print("Done.")
+        print("Reconnecting in 5 seconds...")
+        time.sleep(5)
+
+def main() -> None:
+    if (
+        not isinstance(KAFKA_BOOTSTRAP_SERVERS, str)
+        or not KAFKA_BOOTSTRAP_SERVERS.strip()
+    ):
+        raise ValueError(
+            "KAFKA_BOOTSTRAP_SERVERS is not configured"
+        )
+
+    if (
+        not isinstance(KAFKA_TOPIC, str)
+        or not KAFKA_TOPIC.strip()
+    ):
+        raise ValueError(
+            "KAFKA_TOPIC is not configured"
+        )
+
+    publisher = KafkaPublisher(
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        topic=KAFKA_TOPIC,
+    )
+
+    try:
+        publisher.ensure_topic()
+        run(publisher)
+
+    except KeyboardInterrupt:
+        print("Shutting down...")
+
+    finally:
+        publisher.close()
+
+
+if __name__ == "__main__":
+    main()
