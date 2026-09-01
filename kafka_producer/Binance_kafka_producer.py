@@ -7,14 +7,11 @@ import websocket
 from dotenv import load_dotenv
 
 from kafka_producer.event_contract import build_agg_trade_event
-from kafka_producer.kafka_publisher import KafkaPublisher
+from kafka_producer.publisher_factory import create_publisher
 from kafka_producer.publisher import EventPublisher
 
 
 load_dotenv()
-
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
 
 SYMBOLS = ["btcusdt","ethusdt","bnbusdt","solusdt","xrpusdt","adausdt","dogeusdt","shibusdt",
 ]
@@ -105,29 +102,10 @@ def run(publisher: EventPublisher) -> None:
         time.sleep(5)
 
 def main() -> None:
-    if (
-        not isinstance(KAFKA_BOOTSTRAP_SERVERS, str)
-        or not KAFKA_BOOTSTRAP_SERVERS.strip()
-    ):
-        raise ValueError(
-            "KAFKA_BOOTSTRAP_SERVERS is not configured"
-        )
-
-    if (
-        not isinstance(KAFKA_TOPIC, str)
-        or not KAFKA_TOPIC.strip()
-    ):
-        raise ValueError(
-            "KAFKA_TOPIC is not configured"
-        )
-
-    publisher = KafkaPublisher(
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        topic=KAFKA_TOPIC,
-    )
+    publisher = create_publisher(os.environ)
 
     try:
-        publisher.ensure_topic()
+        publisher.start()
         run(publisher)
 
     except KeyboardInterrupt:

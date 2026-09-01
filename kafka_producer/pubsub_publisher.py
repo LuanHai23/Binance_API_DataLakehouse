@@ -61,6 +61,13 @@ class PubSubPublisher:
         self._publish_error = None
         self._closed = False
 
+    def start(self) -> None:
+        with self._lock:
+            if self._closed:
+                raise RuntimeError(
+                    "Pub/Sub publisher is closed"
+                )
+
     def publish(self, event: Mapping[str, Any]) -> None:
         with self._lock:
             if self._closed:

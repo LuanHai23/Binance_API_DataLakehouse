@@ -1,6 +1,6 @@
 import json
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from kafka_producer import Binance_kafka_producer as binance_producer
 
@@ -128,6 +128,66 @@ class TestBinanceProducer(unittest.TestCase):
 
         self.publisher.publish.assert_called_once()
 
+    @patch.object(binance_producer, "run")
+    @patch.object(binance_producer, "create_publisher")
+    def test_main_normal_lifecycle(self,mock_create_publisher, mock_run):
+        publisher = Mock()
+        mock_create_publisher.return_value = publisher
+
+        binance_producer.main()
+
+        mock_create_publisher.assert_called_once_with(binance_producer.os.environ)
+        publisher.start.assert_called_once_with()
+        mock_run.assert_called_once_with(publisher)
+        publisher.close.assert_called_once_with()
+
+    @patch.object(binance_producer, "run")
+    @patch.object(binance_producer, "create_publisher")
+    def test_main_start_failure_still_closes_publisher(
+        self,
+        mock_create_publisher,
+        mock_run,
+    ):
+        publisher = Mock()
+
+        publisher.start.side_effect = RuntimeError(
+            "publisher start failed"
+        )
+
+        mock_create_publisher.return_value = publisher
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "publisher start failed",
+        ):
+            binance_producer.main()
+
+        mock_run.assert_not_called()
+        publisher.close.assert_called_once_with()
+
+    @patch.object(binance_producer, "run")
+    @patch.object(binance_producer, "create_publisher")
+    def test_main_runtime_failure_still_closes_publisher(
+        self,
+        mock_create_publisher,
+        mock_run,
+    ):
+        publisher = Mock()
+        mock_create_publisher.return_value = publisher
+
+        mock_run.side_effect = RuntimeError(
+            "runtime failed"
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "runtime failed",
+        ):
+            binance_producer.main()
+
+        publisher.start.assert_called_once_with()
+        mock_run.assert_called_once_with(publisher)
+        publisher.close.assert_called_once_with()
 
 if __name__ == "__main__":
     unittest.main()

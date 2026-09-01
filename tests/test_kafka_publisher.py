@@ -226,6 +226,13 @@ class TestKafkaPublisher(unittest.TestCase):
 
         self.producer.flush.assert_called_once_with(30.0)
 
+    def test_start_calls_ensure_topic(self):
+
+        self.publisher.ensure_topic = Mock()
+
+        self.publisher.start()
+
+        self.publisher.ensure_topic.assert_called_once_with()
 
 if __name__ == "__main__":
     unittest.main()

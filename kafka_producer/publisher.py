@@ -3,6 +3,8 @@ from typing import Any, Mapping, Protocol
 
 
 class EventPublisher(Protocol):
+    def start(self) -> None:
+        ...
     """
     Interface for publishing canonical events.
 

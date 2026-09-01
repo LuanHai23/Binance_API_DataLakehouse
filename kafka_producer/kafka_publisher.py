@@ -73,6 +73,9 @@ class KafkaPublisher:
         # Delivery error captured asynchronously by Kafka callback.
         self._delivery_error = None
 
+    def start(self) -> None:
+        self.ensure_topic()
+
     def ensure_topic(self) -> None:
         metadata = self.admin_client.list_topics(timeout=10)
 

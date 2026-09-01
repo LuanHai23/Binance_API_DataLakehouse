@@ -18,9 +18,7 @@ class TestPubSubPublisher(unittest.TestCase):
 
     def setUp(self):
         self.client = Mock()
-        self.client.topic_path.return_value = (
-            "projects/test-project/topics/binance-events"
-        )
+        self.client.topic_path.return_value = ("projects/test-project/topics/binance-events")
 
         self.publisher = PubSubPublisher(
             project_id="test-project",
@@ -332,6 +330,14 @@ class TestPubSubPublisher(unittest.TestCase):
 
         self.client.publish.assert_not_called()
 
+    def test_start_after_close_raises_runtime_error(self):
+        self.publisher.close()
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Pub/Sub publisher is closed",
+        ):
+            self.publisher.start()
 
 if __name__ == "__main__":
     unittest.main()
