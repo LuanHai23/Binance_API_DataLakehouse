@@ -1,20 +1,22 @@
 import json
 import os
-import time
+import signal
 from functools import partial
 
 import websocket
 from dotenv import load_dotenv
 
 from kafka_producer.event_contract import build_agg_trade_event
-from kafka_producer.publisher_factory import create_publisher
 from kafka_producer.publisher import EventPublisher
-
+from kafka_producer.publisher_factory import create_publisher
+from kafka_producer.runtime_control import (
+    RuntimeController,
+    parse_run_duration_seconds,
+)
 
 load_dotenv()
 
-SYMBOLS = ["btcusdt","ethusdt","bnbusdt","solusdt","xrpusdt","adausdt","dogeusdt","shibusdt",
-]
+SYMBOLS = ["btcusdt","ethusdt","bnbusdt","solusdt","xrpusdt","adausdt","dogeusdt","shibusdt",]
 
 stream_string = "/".join(
     f"{symbol}@aggTrade"
@@ -45,7 +47,11 @@ def on_message(
             raw_msg["data"]
         )
 
-    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+    except (
+        json.JSONDecodeError,
+        TypeError,
+        ValueError,
+    ) as exc:
         print(f"Invalid Binance message: {exc}")
         return
 
@@ -69,15 +75,45 @@ def on_close(ws, close_status_code, close_msg) -> None:
     )
 
 
-def on_open(ws) -> None:
+def on_open(
+    ws,
+    *,
+    runtime: RuntimeController,
+) -> None:
+    if runtime.stop_requested:
+        ws.close()
+        return
+
     print("Connected to Binance WebSocket")
     print(f"Socket: {BINANCE_SOCKET}")
 
-def run(publisher: EventPublisher) -> None:
-    while True:
+
+def on_shutdown_signal(
+    signal_number,
+    frame,
+    *,
+    runtime: RuntimeController,
+) -> None:
+    print(f"Received shutdown signal: {signal_number}")
+    runtime.request_stop()
+
+def run(
+    publisher: EventPublisher,
+    runtime: RuntimeController,
+) -> None:
+    """
+    Run Binance WebSocket until RuntimeController requests stop.
+
+    The publisher remains alive across WebSocket reconnects.
+    """
+
+    while not runtime.stop_requested:
         ws_app = websocket.WebSocketApp(
             BINANCE_SOCKET,
-            on_open=on_open,
+            on_open=partial(
+                on_open,
+                runtime=runtime,
+            ),
             on_message=partial(
                 on_message,
                 publisher=publisher,
@@ -85,6 +121,14 @@ def run(publisher: EventPublisher) -> None:
             on_error=on_error,
             on_close=on_close,
         )
+
+        runtime.attach_websocket(ws_app)
+
+        # Stop may have been requested between construction and
+        # attachment. Do not enter run_forever in that case.
+        if runtime.stop_requested:
+            runtime.detach_websocket(ws_app)
+            break
 
         try:
             ws_app.run_forever(
@@ -98,21 +142,55 @@ def run(publisher: EventPublisher) -> None:
         except Exception as exc:
             print(f"WebSocket runtime error: {exc}")
 
+        finally:
+            runtime.detach_websocket(ws_app)
+
+        if runtime.stop_requested:
+            break
+
         print("Reconnecting in 5 seconds...")
-        time.sleep(5)
+
+        if runtime.wait(5):
+            break
 
 def main() -> None:
+    duration = parse_run_duration_seconds(os.environ)
+    runtime = RuntimeController(duration)
     publisher = create_publisher(os.environ)
 
+    previous_sigterm_handler = signal.getsignal(
+        signal.SIGTERM
+    )
+
+    signal.signal(
+        signal.SIGTERM,
+        partial(
+            on_shutdown_signal,
+            runtime=runtime,
+        ),
+    )
+
     try:
+        runtime.start()
         publisher.start()
-        run(publisher)
+        run(publisher, runtime)
 
     except KeyboardInterrupt:
         print("Shutting down...")
 
     finally:
-        publisher.close()
+        try:
+            runtime.close()
+
+        finally:
+            try:
+                publisher.close()
+
+            finally:
+                signal.signal(
+                    signal.SIGTERM,
+                    previous_sigterm_handler,
+                )
 
 
 if __name__ == "__main__":
