@@ -407,7 +407,7 @@ class TestBinanceProducer(unittest.TestCase):
             ping_interval=20,
             ping_timeout=10,
         )
-        
+
     @patch.object(binance_producer.websocket,"WebSocketApp",)
     def test_run_does_not_start_socket_when_stop_arrives_after_attach(
         self,
