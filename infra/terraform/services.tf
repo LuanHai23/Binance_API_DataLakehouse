@@ -8,6 +8,9 @@ locals {
     "pubsub.googleapis.com",
     "run.googleapis.com",
     "secretmanager.googleapis.com",
+    "cloudscheduler.googleapis.com",
+    "workflowexecutions.googleapis.com",
+    "workflows.googleapis.com",
   ])
 }
 
