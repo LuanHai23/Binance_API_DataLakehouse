@@ -53,3 +53,26 @@ resource "google_storage_bucket" "spark_staging" {
     }
   }
 }
+
+resource "google_storage_bucket" "spark_code" {
+  project  = var.project_id
+  name     = "${var.project_id}-spark-code"
+  location = upper(var.region)
+
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = false
+
+  versioning {
+    enabled = true
+  }
+
+  soft_delete_policy {
+    retention_duration_seconds = 604800
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}

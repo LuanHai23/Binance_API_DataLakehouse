@@ -115,3 +115,9 @@ resource "google_storage_bucket_iam_member" "spark_staging_writer" {
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.binance_spark.email}"
 }
+
+resource "google_storage_bucket_iam_member" "spark_code_reader" {
+  bucket = google_storage_bucket.spark_code.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.binance_spark.email}"
+}
