@@ -15,7 +15,7 @@ resource "google_cloud_run_v2_job" "binance_ingestor" {
     template {
       service_account = google_service_account.binance_ingestor.email
       max_retries     = 0
-      timeout         = "120s"
+      timeout         = "3600s"
 
       containers {
         image = local.producer_image_uri
@@ -44,7 +44,7 @@ resource "google_cloud_run_v2_job" "binance_ingestor" {
 
         env {
           name  = "RUN_DURATION_SECONDS"
-          value = "30"
+          value = "3300"
         }
       }
     }
