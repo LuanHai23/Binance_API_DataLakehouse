@@ -1,0 +1,149 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - project_id: ${sys.get_env("BINANCE_PROJECT_ID")}
+          - region: ${sys.get_env("BINANCE_REGION")}
+          - environment: ${sys.get_env("BINANCE_ENVIRONMENT")}
+          - spark_service_account: ${sys.get_env("SPARK_SERVICE_ACCOUNT")}
+          - spark_subnetwork: ${sys.get_env("SPARK_SUBNETWORK")}
+          - spark_staging_bucket: ${sys.get_env("SPARK_STAGING_BUCKET")}
+          - silver_base_uri: ${sys.get_env("SILVER_BASE_URI")}
+          - silver_script_uri: ${sys.get_env("SILVER_SCRIPT_URI")}
+          - silver_code_version: ${sys.get_env("SILVER_CODE_VERSION")}
+          - input_uri: ${map.get(args, "input_uri")}
+          - source_batch_id: ${map.get(args, "source_batch_id")}
+          - poll_count: 0
+          - max_polls: 150
+
+    - validate_input:
+        switch:
+          - condition: ${input_uri == null or input_uri == ""}
+            raise: "input_uri is required"
+          - condition: ${source_batch_id == null or source_batch_id == ""}
+            raise: "source_batch_id is required"
+
+    - build_identifiers:
+        assign:
+          - batch_id: ${"silver-wf-" + source_batch_id + "-" + silver_code_version}
+          - create_url: ${"https://dataproc.googleapis.com/v1/projects/" + project_id + "/locations/" + region + "/batches"}
+
+    - build_request:
+        assign:
+          - batch_url: ${create_url + "/" + batch_id}
+          - batch_body:
+              labels:
+                application: "binance-lakehouse"
+                environment: ${environment}
+                component: "silver"
+                orchestrator: "workflows"
+              pysparkBatch:
+                mainPythonFileUri: ${silver_script_uri}
+                args:
+                  - ${"--input-uri=" + input_uri}
+                  - ${"--silver-base-uri=" + silver_base_uri}
+                  - ${"--batch-id=" + source_batch_id}
+              runtimeConfig:
+                version: "2.3"
+                properties:
+                  dataproc.tier: "standard"
+                  spark.dynamicAllocation.initialExecutors: "2"
+                  spark.dynamicAllocation.minExecutors: "2"
+                  spark.dynamicAllocation.maxExecutors: "2"
+                  spark.sql.shuffle.partitions: "8"
+              environmentConfig:
+                executionConfig:
+                  serviceAccount: ${spark_service_account}
+                  subnetworkUri: ${spark_subnetwork}
+                  stagingBucket: ${spark_staging_bucket}
+                  ttl: "1200s"
+
+    - submit:
+        call: submit_batch
+        args:
+          create_url: ${create_url}
+          batch_id: ${batch_id}
+          batch_body: ${batch_body}
+        result: submission
+
+    - wait_before_poll:
+        call: sys.sleep
+        args:
+          seconds: 10
+
+    - get_batch:
+        call: http.get
+        args:
+          url: ${batch_url}
+          auth:
+            type: OAuth2
+        result: batch_response
+
+    - check_batch:
+        switch:
+          - condition: ${batch_response.body.state == "SUCCEEDED"}
+            next: success
+          - condition: ${batch_response.body.state == "FAILED" or batch_response.body.state == "CANCELLED"}
+            next: batch_failed
+          - condition: ${poll_count >= max_polls}
+            next: polling_timeout
+        next: increment_poll
+
+    - increment_poll:
+        assign:
+          - poll_count: ${poll_count + 1}
+        next: wait_before_poll
+
+    - success:
+        return:
+          status: "SUCCEEDED"
+          submission: ${submission.status}
+          batch_id: ${batch_id}
+          batch_name: ${batch_response.body.name}
+          source_batch_id: ${source_batch_id}
+          input_uri: ${input_uri}
+          polls: ${poll_count}
+
+    - batch_failed:
+        raise:
+          message: ${"Dataproc batch ended in state " + batch_response.body.state}
+          batch_id: ${batch_id}
+          state: ${batch_response.body.state}
+
+    - polling_timeout:
+        raise:
+          message: "Timed out waiting for Dataproc batch"
+          batch_id: ${batch_id}
+          polls: ${poll_count}
+
+submit_batch:
+  params: [create_url, batch_id, batch_body]
+  steps:
+    - create:
+        try:
+          call: http.post
+          args:
+            url: ${create_url}
+            auth:
+              type: OAuth2
+            query:
+              batchId: ${batch_id}
+            body: ${batch_body}
+          result: create_response
+        except:
+          as: e
+          steps:
+            - handle_conflict:
+                switch:
+                  - condition: ${"HttpError" in e.tags and e.code == 409}
+                    return:
+                      status: "ALREADY_EXISTS"
+                      operation: null
+            - rethrow:
+                raise: ${e}
+
+    - created:
+        return:
+          status: "CREATED"
+          operation: ${create_response.body.name}

@@ -42,3 +42,20 @@ resource "google_service_account_iam_member" "terraform_can_act_as_workflow" {
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${var.terraform_service_account}"
 }
+
+locals {
+  workflows_service_agent_email = format(
+    "service-%s@gcp-sa-workflows.iam.gserviceaccount.com",
+    data.google_project.binance_lakehouse.number,
+  )
+}
+
+resource "google_project_iam_member" "workflows_service_agent" {
+  project = var.project_id
+  role    = "roles/workflows.serviceAgent"
+  member  = "serviceAccount:${local.workflows_service_agent_email}"
+
+  depends_on = [
+    google_project_service.workload["workflows.googleapis.com"],
+  ]
+}
