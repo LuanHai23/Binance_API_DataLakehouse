@@ -6,6 +6,7 @@ main:
           - project_id: ${sys.get_env("BINANCE_PROJECT_ID")}
           - region: ${sys.get_env("BINANCE_REGION")}
           - environment: ${sys.get_env("BINANCE_ENVIRONMENT")}
+          - bronze_base_uri: ${sys.get_env("BRONZE_BASE_URI")}
           - spark_service_account: ${sys.get_env("SPARK_SERVICE_ACCOUNT")}
           - spark_subnetwork: ${sys.get_env("SPARK_SUBNETWORK")}
           - spark_staging_bucket: ${sys.get_env("SPARK_STAGING_BUCKET")}
@@ -14,15 +15,51 @@ main:
           - silver_code_version: ${sys.get_env("SILVER_CODE_VERSION")}
           - input_uri: ${map.get(args, "input_uri")}
           - source_batch_id: ${map.get(args, "source_batch_id")}
+          - target_hour: ${map.get(args, "target_hour")}
+          - window_mode: "explicit"
+          - window_timestamp: null
           - poll_count: 0
           - max_polls: 150
 
-    - validate_input:
+    - validate_input_pair:
         switch:
-          - condition: ${input_uri == null or input_uri == ""}
-            raise: "input_uri is required"
-          - condition: ${source_batch_id == null or source_batch_id == ""}
-            raise: "source_batch_id is required"
+          - condition: ${(input_uri == null or input_uri == "") and source_batch_id != null and source_batch_id != ""}
+            raise: "input_uri is required when source_batch_id is provided"
+          - condition: ${(source_batch_id == null or source_batch_id == "") and input_uri != null and input_uri != ""}
+            raise: "source_batch_id is required when input_uri is provided"
+          - condition: ${input_uri != null and input_uri != "" and target_hour != null and target_hour != ""}
+            raise: "target_hour cannot be combined with explicit input arguments"
+
+    - choose_window:
+        switch:
+          - condition: ${input_uri != null and input_uri != ""}
+            next: build_identifiers
+          - condition: ${target_hour != null and target_hour != ""}
+            next: parse_target_hour
+        next: derive_previous_hour
+
+    - parse_target_hour:
+        assign:
+          - window_timestamp: ${time.format(time.parse(target_hour))}
+          - window_mode: "target_hour"
+        next: derive_window_parts
+
+    - derive_previous_hour:
+        assign:
+          - window_timestamp: ${time.format(sys.now() - 3600)}
+          - window_mode: "previous_hour"
+
+    - derive_window_parts:
+        assign:
+          - window_year: ${text.substring(window_timestamp, 0, 4)}
+          - window_month: ${text.substring(window_timestamp, 5, 7)}
+          - window_day: ${text.substring(window_timestamp, 8, 10)}
+          - window_hour: ${text.substring(window_timestamp, 11, 13)}
+
+    - set_window_input:
+        assign:
+          - input_uri: ${bronze_base_uri + "/raw/aggtrade/" + window_year + "/" + window_month + "/" + window_day + "/" + window_hour + "/*.jsonl"}
+          - source_batch_id: ${window_year + window_month + window_day + "t" + window_hour + "z"}
 
     - build_identifiers:
         assign:
@@ -104,6 +141,9 @@ main:
           source_batch_id: ${source_batch_id}
           input_uri: ${input_uri}
           polls: ${poll_count}
+          window_mode: ${window_mode}
+          window_timestamp: ${window_timestamp}
+
 
     - batch_failed:
         raise:
