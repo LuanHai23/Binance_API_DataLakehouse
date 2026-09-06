@@ -22,8 +22,8 @@ resource "google_workflows_workflow" "silver_batch" {
     SPARK_STAGING_BUCKET  = google_storage_bucket.spark_staging.name
     BRONZE_BASE_URI       = "gs://${google_storage_bucket.bronze.name}"
     SILVER_BASE_URI       = "gs://${google_storage_bucket.silver.name}"
-    SILVER_SCRIPT_URI     = "gs://${google_storage_bucket.spark_code.name}/jobs/silver/fd62bed67334/spark_batch_silver_transform.py"
-    SILVER_CODE_VERSION   = "fd62bed"
+    SILVER_SCRIPT_URI     = "gs://${google_storage_bucket.spark_code.name}/jobs/silver/99dbe126b590/spark_batch_silver_transform.py"
+    SILVER_CODE_VERSION   = "99dbe12"
   }
 
   source_contents = file(
