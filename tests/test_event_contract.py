@@ -212,5 +212,31 @@ class TestBuildAggTradeEvent(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     build_agg_trade_event(raw)
 
+    def test_whole_second_timestamps_use_fixed_microseconds(self):
+        raw = VALID_RAW_EVENT.copy()
+        raw["T"] = 1_720_000_000_000
+
+        event = build_agg_trade_event(
+            raw,
+            ingested_at=datetime(
+                2026,
+                8,
+                31,
+                12,
+                0,
+                0,
+                tzinfo=timezone.utc,
+            ),
+        )
+
+        self.assertEqual(
+            event["event_time"],
+            "2024-07-03T09:46:40.000000Z",
+        )
+        self.assertEqual(
+            event["ingested_at"],
+            "2026-08-31T12:00:00.000000Z",
+        )
+
 if __name__ == "__main__":
     unittest.main()

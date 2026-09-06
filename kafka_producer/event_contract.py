@@ -25,7 +25,7 @@ def _to_utc_z(dt: datetime) -> str:
 
     return (
         dt.astimezone(timezone.utc)
-        .isoformat()
+        .isoformat(timespec="microseconds")
         .replace("+00:00", "Z")
     )
 

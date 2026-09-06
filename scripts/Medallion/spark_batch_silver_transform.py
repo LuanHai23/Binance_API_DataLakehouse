@@ -17,7 +17,7 @@ from pyspark.sql.types import (
 
 
 DECIMAL_TYPE = DecimalType(38, 18)
-TIMESTAMP_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX"
+TIMESTAMP_FORMAT = "yyyy-MM-dd'T'HH:mm:ss[.SSSSSS]XXX"
 BATCH_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
