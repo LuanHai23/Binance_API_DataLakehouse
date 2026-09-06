@@ -1,5 +1,5 @@
 locals {
-  producer_image_uri = "asia-southeast1-docker.pkg.dev/binance-lakehouse-dev-1611/binance-producer-dev/binance-producer@sha256:dae122b17ad06347a5e55db954d81f7a68d1c4ce62fb0be6e164a2c2f610d2cd"
+  producer_image_uri = "asia-southeast1-docker.pkg.dev/binance-lakehouse-dev-1611/binance-producer-dev/binance-producer@sha256:29c8ba2f691ee6e3a4cde3372426d41899db42521c209a5c88e8bff77f36b4a6"
 }
 
 resource "google_cloud_run_v2_job" "binance_ingestor" {
