@@ -35,6 +35,7 @@ resource "google_monitoring_alert_policy" "ingestor_execution_failed" {
   display_name = "Binance Ingestor ${var.environment} - execution failed"
   combiner     = "OR"
   enabled      = true
+  severity     = "ERROR"
 
   notification_channels = [
     google_monitoring_notification_channel.pipeline_email.name,
@@ -44,7 +45,6 @@ resource "google_monitoring_alert_policy" "ingestor_execution_failed" {
     application = "binance-lakehouse"
     component   = "ingestor"
     environment = var.environment
-    severity    = "critical"
   }
 
   conditions {
@@ -95,6 +95,7 @@ resource "google_monitoring_alert_policy" "silver_workflow_failed" {
   display_name = "Binance Silver ${var.environment} - workflow failed"
   combiner     = "OR"
   enabled      = true
+  severity     = "ERROR"
 
   notification_channels = [
     google_monitoring_notification_channel.pipeline_email.name,
@@ -104,7 +105,6 @@ resource "google_monitoring_alert_policy" "silver_workflow_failed" {
     application = "binance-lakehouse"
     component   = "silver"
     environment = var.environment
-    severity    = "critical"
   }
 
   conditions {
