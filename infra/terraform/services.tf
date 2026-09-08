@@ -4,6 +4,7 @@ locals {
     "bigquery.googleapis.com",
     "bigqueryconnection.googleapis.com",
     "bigquerystorage.googleapis.com",
+    "billingbudgets.googleapis.com",
     "cloudbuild.googleapis.com",
     "compute.googleapis.com",
     "dataproc.googleapis.com",
