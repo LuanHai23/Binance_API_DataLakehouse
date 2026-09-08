@@ -6,7 +6,7 @@ resource "google_cloud_scheduler_job" "binance_ingestor_hourly" {
 
   schedule  = "0 3 * * *"
   time_zone = "Etc/UTC"
-  paused    = true
+  paused    = false
 
   attempt_deadline = "60s"
 
@@ -41,7 +41,7 @@ resource "google_cloud_scheduler_job" "silver_hourly" {
 
   schedule  = "10 4 * * *"
   time_zone = "Etc/UTC"
-  paused    = true
+  paused    = false
 
   attempt_deadline = "60s"
 
