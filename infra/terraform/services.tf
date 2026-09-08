@@ -2,6 +2,8 @@ locals {
   workload_services = toset([
     "artifactregistry.googleapis.com",
     "bigquery.googleapis.com",
+    "bigqueryconnection.googleapis.com",
+    "bigquerystorage.googleapis.com",
     "cloudbuild.googleapis.com",
     "compute.googleapis.com",
     "dataproc.googleapis.com",
