@@ -2,9 +2,9 @@ resource "google_cloud_scheduler_job" "binance_ingestor_hourly" {
   project     = var.project_id
   region      = var.region
   name        = "binance-ingestor-hourly-${var.environment}"
-  description = "Start the bounded Binance ingestion Cloud Run job each hour"
+  description = "Start one bounded Binance ingestion window daily at 03:00 UTC"
 
-  schedule  = "0 * * * *"
+  schedule  = "0 3 * * *"
   time_zone = "Etc/UTC"
   paused    = true
 
@@ -37,9 +37,9 @@ resource "google_cloud_scheduler_job" "silver_hourly" {
   project     = var.project_id
   region      = var.region
   name        = "binance-silver-hourly-${var.environment}"
-  description = "Process the previous completed UTC hour into Silver"
+  description = "Process the previous completed UTC hour daily at 04:10 UTC"
 
-  schedule  = "10 * * * *"
+  schedule  = "10 4 * * *"
   time_zone = "Etc/UTC"
   paused    = true
 
