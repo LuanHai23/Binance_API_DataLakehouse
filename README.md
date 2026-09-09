@@ -4,6 +4,19 @@ A production-style local Data Engineering project that ingests live cryptocurren
 
 This project demonstrates practical Data Engineering skills including streaming ingestion, micro-batch processing, data lake design, warehouse modeling, idempotent loading, data quality gates, SCD Type 2, pipeline audit logging, data freshness monitoring, dbt testing, and BI dashboarding.
 
+## ☁️ Deployment Profiles
+
+This repository contains two complementary execution profiles:
+
+- **Local analytics profile:** Kafka, Spark, MinIO, PostgreSQL, dbt, Airflow, and Metabase demonstrate the complete Bronze, Silver, Gold, and BI workflow.
+- **Deployed GCP MVP:** Cloud Run, Pub/Sub, Cloud Storage, Workflows, Dataproc Serverless, BigLake, Monitoring, and Terraform demonstrate a managed Bronze-to-Silver cloud pipeline.
+
+The GCP MVP is accepted, runs automatically once daily, and includes alerting, data-quality reconciliation, operational documentation, and a monthly billing guardrail. Cloud Gold and BI remain a subsequent phase.
+
+- [GCP MVP overview](docs/gcp-mvp/README.md)
+- [Operations runbook](docs/gcp-mvp/OPERATIONS_RUNBOOK.md)
+- [Acceptance evidence](docs/gcp-mvp/ACCEPTANCE_EVIDENCE.md)
+
 ---
 
 # 🎯 Problem Statement
