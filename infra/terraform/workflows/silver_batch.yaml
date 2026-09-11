@@ -13,6 +13,7 @@ main:
           - silver_base_uri: ${sys.get_env("SILVER_BASE_URI")}
           - silver_script_uri: ${sys.get_env("SILVER_SCRIPT_URI")}
           - silver_code_version: ${sys.get_env("SILVER_CODE_VERSION")}
+          - workflow_execution_id: ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID")}
           - input_uri: ${map.get(args, "input_uri")}
           - source_batch_id: ${map.get(args, "source_batch_id")}
           - target_hour: ${map.get(args, "target_hour")}
@@ -20,6 +21,8 @@ main:
           - window_timestamp: null
           - poll_count: 0
           - max_polls: 150
+          - gold_poll_count: 0
+          - gold_max_polls: 30
 
     - validate_input_pair:
         switch:
@@ -120,7 +123,7 @@ main:
     - check_batch:
         switch:
           - condition: ${batch_response.body.state == "SUCCEEDED"}
-            next: success
+            next: prepare_gold_query
           - condition: ${batch_response.body.state == "FAILED" or batch_response.body.state == "CANCELLED"}
             next: batch_failed
           - condition: ${poll_count >= max_polls}
@@ -131,6 +134,120 @@ main:
         assign:
           - poll_count: ${poll_count + 1}
         next: wait_before_poll
+
+    - prepare_gold_query:
+        assign:
+          - gold_event_date: ${text.substring(source_batch_id, 0, 4) + "-" + text.substring(source_batch_id, 4, 6) + "-" + text.substring(source_batch_id, 6, 8)}
+          - gold_query_request:
+              query: __GOLD_MERGE_QUERY_JSON__
+              useLegacySql: false
+              useQueryCache: false
+              maxResults: 1
+              maximumBytesBilled: "1000000000"
+              location: ${region}
+              timeoutMs: 180000
+              requestId: ${workflow_execution_id}
+              parameterMode: "NAMED"
+              labels:
+                component: "gold"
+                purpose: "workflow_merge"
+              queryParameters:
+                - name: "source_batch"
+                  parameterType:
+                    type: "STRING"
+                  parameterValue:
+                    value: ${source_batch_id}
+                - name: "event_date"
+                  parameterType:
+                    type: "DATE"
+                  parameterValue:
+                    value: ${gold_event_date}
+                - name: "allow_mutation"
+                  parameterType:
+                    type: "BOOL"
+                  parameterValue:
+                    value: "true"
+
+    - submit_gold_query:
+        call: googleapis.bigquery.v2.jobs.query
+        args:
+          projectId: ${project_id}
+          body: ${gold_query_request}
+        result: gold_query_result
+
+    - capture_gold_job:
+        assign:
+          - gold_job_id: ${gold_query_result.jobReference.jobId}
+
+    - check_gold_query:
+        switch:
+          - condition: ${gold_query_result.jobComplete == true}
+            next: check_gold_errors
+          - condition: ${gold_poll_count >= gold_max_polls}
+            next: gold_query_timeout
+        next: increment_gold_poll
+
+    - increment_gold_poll:
+        assign:
+          - gold_poll_count: ${gold_poll_count + 1}
+
+    - poll_gold_query:
+        call: googleapis.bigquery.v2.jobs.getQueryResults
+        args:
+          projectId: ${project_id}
+          jobId: ${gold_job_id}
+          location: ${region}
+          maxResults: 1
+          timeoutMs: 10000
+        result: gold_query_result
+        next: check_gold_query
+
+    - check_gold_errors:
+        switch:
+          - condition: ${map.get(gold_query_result, "errors") != null}
+            next: gold_query_failed
+        next: check_gold_result_shape
+
+    - check_gold_result_shape:
+        switch:
+          - condition: ${map.get(gold_query_result, "totalRows") != "1"}
+            next: gold_result_invalid
+          - condition: ${map.get(gold_query_result, "rows") == null}
+            next: gold_result_invalid
+          - condition: ${len(gold_query_result.rows) != 1}
+            next: gold_result_invalid
+        next: parse_gold_result
+
+    - parse_gold_result:
+        assign:
+          - gold_result_source_batch: ${gold_query_result.rows[0].f[0].v}
+          - gold_result_event_date: ${gold_query_result.rows[0].f[1].v}
+          - gold_mutation_enabled: ${gold_query_result.rows[0].f[2].v}
+          - gold_source_rows: ${gold_query_result.rows[0].f[3].v}
+          - gold_eligible_rows: ${gold_query_result.rows[0].f[4].v}
+          - gold_staging_rows: ${gold_query_result.rows[0].f[5].v}
+          - gold_distinct_symbols: ${gold_query_result.rows[0].f[6].v}
+          - gold_staged_trade_count: ${gold_query_result.rows[0].f[7].v}
+          - gold_staged_large_trade_count: ${gold_query_result.rows[0].f[8].v}
+          - gold_target_rows_after: ${gold_query_result.rows[0].f[9].v}
+          - gold_target_trade_count_after: ${gold_query_result.rows[0].f[10].v}
+          - gold_evaluated_at: ${gold_query_result.rows[0].f[11].v}
+
+    - validate_gold_identity:
+        switch:
+          - condition: ${gold_result_source_batch != source_batch_id or gold_result_event_date != gold_event_date or gold_mutation_enabled != "true"}
+            next: gold_acceptance_failed
+        next: validate_gold_reconciliation
+
+    - validate_gold_reconciliation:
+        switch:
+          - condition: ${gold_source_rows == "0" or gold_staging_rows == "0" or gold_distinct_symbols == "0"}
+            next: gold_acceptance_failed
+          - condition: ${gold_source_rows != gold_eligible_rows or gold_source_rows != gold_staged_trade_count}
+            next: gold_acceptance_failed
+          - condition: ${gold_staging_rows != gold_target_rows_after or gold_staged_trade_count != gold_target_trade_count_after}
+            next: gold_acceptance_failed
+        next: success
 
     - success:
         return:
@@ -143,7 +260,52 @@ main:
           polls: ${poll_count}
           window_mode: ${window_mode}
           window_timestamp: ${window_timestamp}
+          gold:
+            status: "SUCCEEDED"
+            job_id: ${gold_job_id}
+            source_batch_id: ${gold_result_source_batch}
+            event_date: ${gold_result_event_date}
+            source_rows: ${gold_source_rows}
+            candle_rows: ${gold_target_rows_after}
+            distinct_symbols: ${gold_distinct_symbols}
+            trade_count: ${gold_target_trade_count_after}
+            large_trade_count: ${gold_staged_large_trade_count}
+            query_polls: ${gold_poll_count}
+            evaluated_at: ${gold_evaluated_at}
 
+
+    - gold_query_timeout:
+        raise:
+          message: "Timed out waiting for the BigQuery Gold MERGE"
+          job_id: ${gold_job_id}
+          polls: ${gold_poll_count}
+
+    - gold_query_failed:
+        raise:
+          message: "BigQuery Gold MERGE returned errors"
+          job_id: ${gold_job_id}
+          errors: ${map.get(gold_query_result, "errors")}
+
+    - gold_result_invalid:
+        raise:
+          message: "BigQuery Gold MERGE returned an invalid result shape"
+          job_id: ${gold_job_id}
+          total_rows: ${map.get(gold_query_result, "totalRows")}
+
+    - gold_acceptance_failed:
+        raise:
+          message: "Gold post-MERGE reconciliation failed"
+          job_id: ${gold_job_id}
+          expected_source_batch: ${source_batch_id}
+          actual_source_batch: ${gold_result_source_batch}
+          expected_event_date: ${gold_event_date}
+          actual_event_date: ${gold_result_event_date}
+          source_rows: ${gold_source_rows}
+          eligible_rows: ${gold_eligible_rows}
+          staging_rows: ${gold_staging_rows}
+          target_rows_after: ${gold_target_rows_after}
+          staged_trade_count: ${gold_staged_trade_count}
+          target_trade_count_after: ${gold_target_trade_count_after}
 
     - batch_failed:
         raise:
