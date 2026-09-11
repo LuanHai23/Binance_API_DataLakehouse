@@ -1,0 +1,116 @@
+-- BI-facing 24-hour market overview.
+-- Grain: one row per Binance trading symbol.
+-- The watermark is bounded to recent partitions so stale development data does
+-- not remain indefinitely visible as a current market snapshot.
+
+WITH watermark AS (
+  SELECT
+    MAX(candle_start_time) AS max_candle_time
+  FROM `${project_id}.${gold_dataset}.fact_market_candles_1m`
+  WHERE candle_date BETWEEN
+    DATE_SUB(CURRENT_DATE("UTC"), INTERVAL 30 DAY)
+    AND CURRENT_DATE("UTC")
+),
+
+base AS (
+  SELECT
+    fact.*
+  FROM `${project_id}.${gold_dataset}.fact_market_candles_1m` AS fact
+  CROSS JOIN watermark
+  WHERE fact.candle_date BETWEEN
+    DATE_SUB(CURRENT_DATE("UTC"), INTERVAL 30 DAY)
+    AND CURRENT_DATE("UTC")
+    AND fact.candle_start_time
+      >= TIMESTAMP_SUB(watermark.max_candle_time, INTERVAL 24 HOUR)
+    AND fact.candle_start_time
+      <= watermark.max_candle_time
+),
+
+aggregated AS (
+  SELECT
+    symbol,
+
+    ARRAY_AGG(
+      open_price
+      ORDER BY candle_start_time ASC
+      LIMIT 1
+    )[OFFSET(0)] AS first_price_24h,
+
+    ARRAY_AGG(
+      close_price
+      ORDER BY candle_start_time DESC
+      LIMIT 1
+    )[OFFSET(0)] AS current_price,
+
+    MAX(high_price) AS high_price_24h,
+    MIN(low_price) AS low_price_24h,
+
+    SUM(total_volume) AS volume_24h,
+    SUM(quote_volume) AS quote_volume_24h,
+    SUM(trade_count) AS trade_count_24h,
+    SUM(buy_volume_taker) AS buy_volume_24h,
+    SUM(sell_volume_maker) AS sell_volume_24h,
+    SUM(large_trade_count) AS large_trade_count_24h,
+
+    COUNT(*) AS candle_count_24h,
+    COUNT(DISTINCT source_batch) AS source_batch_count_24h,
+
+    MIN(candle_start_time) AS window_start,
+    MAX(candle_end_time) AS window_end,
+    MAX(candle_start_time) AS last_updated,
+    MAX(gold_processed_at) AS gold_processed_at,
+    MAX(loaded_at) AS loaded_at
+
+  FROM base
+  GROUP BY symbol
+)
+
+SELECT
+  aggregated.symbol,
+  aggregated.current_price,
+  aggregated.first_price_24h,
+
+  ROUND(
+    SAFE_DIVIDE(
+      aggregated.current_price - aggregated.first_price_24h,
+      aggregated.first_price_24h
+    ) * 100,
+    4
+  ) AS price_change_pct_24h,
+
+  aggregated.high_price_24h,
+  aggregated.low_price_24h,
+  aggregated.volume_24h,
+  aggregated.quote_volume_24h,
+  aggregated.trade_count_24h,
+  aggregated.buy_volume_24h,
+  aggregated.sell_volume_24h,
+
+  ROUND(
+    SAFE_DIVIDE(
+      aggregated.buy_volume_24h,
+      aggregated.volume_24h
+    ) * 100,
+    2
+  ) AS buy_ratio_pct,
+
+  ROUND(
+    SAFE_DIVIDE(
+      aggregated.sell_volume_24h,
+      aggregated.volume_24h
+    ) * 100,
+    2
+  ) AS sell_ratio_pct,
+
+  aggregated.large_trade_count_24h,
+  aggregated.candle_count_24h,
+  aggregated.source_batch_count_24h,
+  aggregated.window_start,
+  aggregated.window_end,
+  aggregated.last_updated,
+  watermark.max_candle_time AS market_watermark,
+  aggregated.gold_processed_at,
+  aggregated.loaded_at
+
+FROM aggregated
+CROSS JOIN watermark
