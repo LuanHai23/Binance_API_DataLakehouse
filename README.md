@@ -11,11 +11,13 @@ This repository contains two complementary execution profiles:
 - **Local analytics profile:** Kafka, Spark, MinIO, PostgreSQL, dbt, Airflow, and Metabase demonstrate the complete Bronze, Silver, Gold, and BI workflow.
 - **Deployed GCP MVP:** Cloud Run, Pub/Sub, Cloud Storage, Workflows, Dataproc Serverless, BigLake, Monitoring, and Terraform demonstrate a managed Bronze-to-Silver cloud pipeline.
 
-The GCP MVP is accepted, runs automatically once daily, and includes alerting, data-quality reconciliation, operational documentation, and a monthly billing guardrail. Cloud Gold and BI remain a subsequent phase.
+The GCP MVP is accepted, runs automatically once daily, and includes alerting, data-quality reconciliation, operational documentation, and a monthly billing guardrail. The managed cloud profile now extends through deterministic native BigQuery Gold one-minute candles; BI is the next delivery phase.
 
 - [GCP MVP overview](docs/gcp-mvp/README.md)
 - [Operations runbook](docs/gcp-mvp/OPERATIONS_RUNBOOK.md)
 - [Acceptance evidence](docs/gcp-mvp/ACCEPTANCE_EVIDENCE.md)
+- [Cloud Gold data contract](docs/gcp-gold/DATA_CONTRACT.md)
+- [Cloud Gold acceptance evidence](docs/gcp-gold/ACCEPTANCE_EVIDENCE.md)
 
 ---
 
