@@ -80,6 +80,37 @@ The scorecards, table, quote-volume chart, and buy/sell chart all reduced to the
 
 ![Binance Market Overview — GCP Gold](images/gcp_market_overview_dashboard.png)
 
+## Rolling-window correction (2026-09-12 UTC)
+
+The live mart selects candle starts in `(W - 24 hours, W]`,
+where `W` is the latest stored Gold candle start.
+The former inclusive lower bound also selected candles exactly 24 hours old.
+
+For `W = 2026-09-12 03:55:00 UTC`, the lower boundary
+`2026-09-11 03:55:00 UTC` is now excluded.
+
+| Mart metric | Before: inclusive lower bound | After: lower-exclusive |
+| --- | ---: | ---: |
+| Candle count | 446 | 438 |
+| Trade count | 38,780 | 38,146 |
+| Large-trade count | 748 | 744 |
+
+Post-deployment acceptance returned 8 unique symbols.
+Both full-row set differences and invalid-window counts were 0.
+The earliest selected candle was `2026-09-12 03:00:00 UTC`.
+
+Acceptance query: `job_rBkZdpzLfB32UhLVy_mrjjDbNBQN`.
+Full-refresh Terraform convergence returned exit code 0: no changes.
+
+The interval allows at most 1,440 aligned minute starts per symbol.
+Missing candles are not filled. Metrics describe collected trades, not
+continuous Binance market coverage; the latest stored price is not a
+real-time quote.
+
+Only the logical view definition changed. Historical Gold data, Workflow,
+IAM, and Scheduler configuration were unchanged.
+Earlier metrics and the original dashboard image remain historical snapshots.
+
 ## Acceptance declaration
 
 The first cloud-native BI serving path is accepted:

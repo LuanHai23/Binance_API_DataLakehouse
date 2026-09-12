@@ -1,5 +1,8 @@
 -- BI-facing 24-hour market overview.
 -- Grain: one row per Binance trading symbol.
+-- Window: (latest candle start - 24 hours, latest candle start].
+-- Includes at most 1,440 aligned minute starts; missing candles are not filled.
+-- Metrics describe collected trades, not complete Binance market coverage.
 -- The watermark is bounded to recent partitions so stale development data does
 -- not remain indefinitely visible as a current market snapshot.
 
@@ -21,7 +24,7 @@ base AS (
     DATE_SUB(CURRENT_DATE("UTC"), INTERVAL 30 DAY)
     AND CURRENT_DATE("UTC")
     AND fact.candle_start_time
-      >= TIMESTAMP_SUB(watermark.max_candle_time, INTERVAL 24 HOUR)
+      > TIMESTAMP_SUB(watermark.max_candle_time, INTERVAL 24 HOUR)
     AND fact.candle_start_time
       <= watermark.max_candle_time
 ),
