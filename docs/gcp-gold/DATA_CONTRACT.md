@@ -144,18 +144,20 @@ No delete clause is allowed in Gold v1.
 The Gold job must stop before `MERGE` unless all checks pass:
 
 1. The requested `source_batch` matches the expected batch-id pattern.
-2. At least one eligible Silver row exists for the batch.
-3. No staging business key is duplicated.
-4. Every OHLC value is positive.
-5. `low_price <= open_price`, `low_price <= close_price`,
+2. Every selected Silver row is eligible for Gold; invalid source rows are not
+   silently discarded.
+3. At least one eligible Silver row exists for the batch.
+4. No staging business key is duplicated.
+5. Every OHLC value is positive.
+6. `low_price <= open_price`, `low_price <= close_price`,
    `high_price >= open_price`, and `high_price >= close_price`.
-6. `high_price >= low_price`.
-7. Volumes and counts are non-negative.
-8. `buy_volume_taker + sell_volume_maker = total_volume`.
-9. `source_min_event_time >= candle_start_time`.
-10. `source_max_event_time < candle_end_time`.
-11. `SUM(staging.trade_count)` equals the eligible Silver input-row count.
-12. Staging contains the expected symbol set for the validated batch.
+7. `high_price >= low_price`.
+8. Volumes and counts are non-negative.
+9. `buy_volume_taker + sell_volume_maker = total_volume`.
+10. `source_min_event_time >= candle_start_time`.
+11. `source_max_event_time < candle_end_time`.
+12. `SUM(staging.trade_count)` equals the eligible Silver input-row count.
+13. Staging contains the expected symbol set for the validated batch.
 
 NUMERIC comparisons should be exact. Do not introduce a floating-point
 tolerance for volume reconciliation.

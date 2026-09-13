@@ -70,6 +70,10 @@ SET eligible_row_count = (
 );
 
 ASSERT
+  source_row_count = eligible_row_count
+AS 'Silver source contains rows that are ineligible for Gold';
+
+ASSERT
   eligible_row_count > 0
 AS 'no eligible Silver rows exist for the requested batch';
 
