@@ -74,6 +74,34 @@ A cycle is accepted only when all of the following hold:
 - BigLake row count equals the Spark written-row count.
 - Event IDs, timestamps, prices, quantities, and trade values pass validation.
 
+### Enforced Silver pre-publish gates
+
+The Spark transform writes and reads back the batch quarantine before deciding
+whether Silver may be published. It stops before the Silver overwrite when:
+
+- no valid row remains;
+- any Bronze row is rejected by the schema or business validation rules;
+- a duplicate `event_id` is detected before deduplication; or
+- the accepted symbol set differs from the eight configured production pairs.
+
+This development profile deliberately uses a strict, accuracy-first policy:
+deduplication still creates the candidate Silver dataset, but any duplicate is
+treated as an upstream anomaly rather than silently accepted. Rejected records
+remain in the batch quarantine. Duplicate and symbol-set diagnostics remain in
+the Dataproc driver logs, while the immutable Bronze input remains available
+for investigation.
+
+A failed pre-publish gate does not modify the intended Silver output. During a
+rerun, an older same-batch Silver prefix may already exist, so its presence is
+not proof of success; use the terminal Dataproc and Workflow states as the
+authoritative result.
+
+Cloud Silver v1 defines `trade_value` as the decimal product of `price` and
+`quantity`, rounded to six fractional digits. This makes Spark's bounded
+fixed-precision result explicit. Acceptance must compare the stored value
+exactly with `ROUND(price * quantity, 6)`; it must not compare with the
+unrounded product or introduce a floating-point tolerance.
+
 Always filter the BigLake table by Hive partition keys. Example:
 
 ```sql
@@ -149,3 +177,12 @@ Resume only the intended jobs and verify their next scheduled times immediately.
 - Advanced delivery promotion and rollback automation remain future CI/CD work.
 
 For the immutable acceptance baseline, see [Acceptance evidence](ACCEPTANCE_EVIDENCE.md).
+
+### Silver DQ runtime acceptance — 2026-09-13 UTC
+
+Batch `20260912t03z`, Spark artifact `e2ab277`, Workflow revision `000006-fe1`.
+Execution `b82db9c3-d4ef-4a6d-815f-ef4f914dc0ad` and Dataproc both succeeded.
+Post-run SELECT: 38146 Silver rows and unique event IDs; 8 symbols; 0 invalid rows.
+Gold: 438 rows and unique keys; 38146 trades; 744 large trades; 8 symbols.
+Silver processed at `2026-09-13 11:33:09.843968+00`;
+Gold processed and loaded at `2026-09-13 11:33:36.388558+00`.

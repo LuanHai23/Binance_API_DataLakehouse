@@ -19,6 +19,16 @@ from pyspark.sql.types import (
 DECIMAL_TYPE = DecimalType(38, 18)
 TIMESTAMP_FORMAT = "yyyy-MM-dd'T'HH:mm:ss[.SSSSSS]XXX"
 BATCH_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+EXPECTED_SYMBOLS = frozenset({
+    "ADAUSDT",
+    "BNBUSDT",
+    "BTCUSDT",
+    "DOGEUSDT",
+    "ETHUSDT",
+    "SHIBUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+})
 
 
 BRONZE_SCHEMA = StructType([
@@ -309,6 +319,21 @@ def main() -> None:
         silver_df = build_silver_dataframe(validated_df)
         silver_rows = silver_df.count()
         duplicate_rows = valid_before_dedup - silver_rows
+        actual_symbols = {
+            row["symbol"]
+            for row in (
+                silver_df
+                .select("symbol")
+                .distinct()
+                .collect()
+            )
+        }
+        missing_symbols = sorted(
+            EXPECTED_SYMBOLS - actual_symbols
+        )
+        unexpected_symbols = sorted(
+            actual_symbols - EXPECTED_SYMBOLS
+        )
 
         print(f"Input URI: {args.input_uri}")
         print(f"Silver output URI: {silver_output_uri}")
@@ -317,6 +342,8 @@ def main() -> None:
         print(f"Rejected rows: {rejected_rows}")
         print(f"Duplicate rows removed: {duplicate_rows}")
         print(f"Silver rows: {silver_rows}")
+        print(f"Missing symbols: {missing_symbols}")
+        print(f"Unexpected symbols: {unexpected_symbols}")
 
         (
             rejected_df.write
@@ -324,9 +351,44 @@ def main() -> None:
             .parquet(quarantine_output_uri)
         )
 
+        written_quarantine_rows = (
+            spark.read
+            .parquet(quarantine_output_uri)
+            .count()
+        )
+
+        print(
+            f"Written quarantine rows: "
+            f"{written_quarantine_rows}"
+        )
+
+        if written_quarantine_rows != rejected_rows:
+            raise RuntimeError(
+                "Quarantine read-back row count mismatch"
+            )
+
         if silver_rows == 0:
             raise RuntimeError(
                 "No valid Silver records were produced"
+            )
+
+        if rejected_rows != 0:
+            raise RuntimeError(
+                "Bronze validation rejected rows; "
+                "Silver publish blocked"
+            )
+
+        if duplicate_rows != 0:
+            raise RuntimeError(
+                "Duplicate event IDs detected; "
+                "Silver publish blocked"
+            )
+
+        if missing_symbols or unexpected_symbols:
+            raise RuntimeError(
+                "Silver symbol set mismatch: "
+                f"missing={missing_symbols}, "
+                f"unexpected={unexpected_symbols}"
             )
 
         (
@@ -356,12 +418,6 @@ def main() -> None:
             written_metrics["unique_event_ids"]
         )
 
-        written_quarantine_rows = (
-            spark.read
-            .parquet(quarantine_output_uri)
-            .count()
-        )
-
         print(
             f"Written Silver rows: "
             f"{written_silver_rows}"
@@ -370,11 +426,6 @@ def main() -> None:
             f"Written unique event IDs: "
             f"{written_unique_event_ids}"
         )
-        print(
-            f"Written quarantine rows: "
-            f"{written_quarantine_rows}"
-        )
-
         if written_silver_rows != silver_rows:
             raise RuntimeError(
                 "Silver read-back row count mismatch"
@@ -385,10 +436,6 @@ def main() -> None:
                 "Duplicate event IDs detected after write"
             )
 
-        if written_quarantine_rows != rejected_rows:
-            raise RuntimeError(
-                "Quarantine read-back row count mismatch"
-            )
         print("Silver batch completed successfully")
 
     finally:
