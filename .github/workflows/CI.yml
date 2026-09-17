@@ -3,88 +3,201 @@ name: Binance Lakehouse CI
 on:
   push:
     branches:
-      - main
-      - master
+      - "**"
   pull_request:
     branches:
       - main
       - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  TERRAFORM_VERSION: "1.16.0"
 
 jobs:
-  validate-project:
-    name: Validate Python, dbt, and YAML
+  python:
+    name: Python unit tests and YAML
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        shell: bash
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-producer.txt
 
-      - name: Install validation dependencies
+      - name: Install producer and YAML dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install dbt-postgres==1.10.0 PyYAML
+          python -m pip install --disable-pip-version-check \
+            --requirement requirements-producer.txt \
+            PyYAML==6.0.3
 
       - name: Check Python syntax
         run: |
-          python -m compileall scripts dags
+          python -m compileall -q kafka_producer scripts dags tests
 
-      - name: Validate YAML files
+      - name: Run producer unit tests
         run: |
-          python - << 'PY'
-          import yaml
+          python -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Validate tracked YAML files
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
           from pathlib import Path
 
-          yaml_files = list(Path(".").rglob("*.yml")) + list(Path(".").rglob("*.yaml"))
+          import yaml
 
-          for file in yaml_files:
-              if ".venv" in str(file) or "target" in str(file):
-                  continue
+          raw_paths = subprocess.check_output([
+              "git",
+              "ls-files",
+              "-z",
+              "--",
+              "*.yml",
+              "*.yaml",
+          ])
 
-              print(f"Checking YAML: {file}")
-              with open(file, "r", encoding="utf-8") as f:
-                  yaml.safe_load(f)
+          paths = [
+              Path(os.fsdecode(item))
+              for item in raw_paths.split(b"\0")
+              if item
+          ]
 
-          print("YAML validation passed.")
+          for path in paths:
+              yaml.safe_load(path.read_text(encoding="utf-8"))
+              print(f"YAML=PASS {path}")
+
+          print(f"YAML_VALIDATION=PASS FILE_COUNT={len(paths)}")
           PY
 
-      - name: Create dbt CI profile
+      - name: Validate rendered GCP Workflow
         run: |
-          mkdir -p ~/.dbt
-          cat > ~/.dbt/profiles.yml << 'EOF'
-          binance_analytics:
-            target: ci
-            outputs:
-              ci:
-                type: postgres
-                host: localhost
-                user: admin
-                password: adminpassword
-                port: 5432
-                dbname: warehouse_db
-                schema: public
-                threads: 2
-          EOF
+          python - <<'PY'
+          import json
+          from pathlib import Path
 
-      - name: Install dbt dependencies
+          import yaml
+
+          silver = Path(
+              "infra/terraform/workflows/silver_batch.yaml"
+          ).read_text(encoding="utf-8")
+          audit_helper = Path(
+              "infra/terraform/workflows/run_audit.yaml"
+          ).read_text(encoding="utf-8")
+          gold_sql = Path(
+              "sql/gcp_gold/fact_market_candles_1m_merge.sql"
+          ).read_text(encoding="utf-8")
+          audit_sql = Path(
+              "sql/gcp_ops/upsert_pipeline_run.sql.tftpl"
+          ).read_text(encoding="utf-8")
+
+          audit_sql = (
+              audit_sql
+              .replace("${PROJECT_ID}", "validation-project")
+              .replace("${OPS_DATASET}", "binance_ops_validation")
+          )
+
+          rendered = "\n".join([silver, audit_helper])
+          rendered = rendered.replace(
+              "__GOLD_MERGE_QUERY_JSON__",
+              json.dumps(gold_sql),
+          )
+          rendered = rendered.replace(
+              "__RUN_AUDIT_QUERY_JSON__",
+              json.dumps(audit_sql),
+          )
+
+          if "__GOLD_MERGE_QUERY_JSON__" in rendered:
+              raise RuntimeError("Gold SQL placeholder was not rendered")
+          if "__RUN_AUDIT_QUERY_JSON__" in rendered:
+              raise RuntimeError("Run-audit SQL placeholder was not rendered")
+
+          document = yaml.safe_load(rendered)
+          expected = {"main", "submit_batch", "write_run_audit"}
+
+          if not expected.issubset(document):
+              raise RuntimeError("Rendered Workflow definitions are incomplete")
+
+          print("RENDERED_GCP_WORKFLOW=PASS")
+          PY
+
+  terraform:
+    name: Terraform format and validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive infra/terraform
+
+      - name: Initialize Terraform without backend
+        run: |
+          terraform -chdir=infra/terraform init \
+            -backend=false \
+            -input=false \
+            -lockfile=readonly \
+            -no-color
+
+      - name: Validate Terraform configuration
+        run: |
+          terraform -chdir=infra/terraform validate -no-color
+
+  dbt:
+    name: Parse dbt project
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dbt adapter
+        run: |
+          python -m pip install --disable-pip-version-check \
+            dbt-core==1.10.23 dbt-postgres==1.10.0
+
+      - name: Install dbt packages
+        working-directory: binance_analytics
+        run: dbt deps --profiles-dir .
+
+      - name: Parse dbt project without warehouse access
         working-directory: binance_analytics
         run: |
-          dbt deps
-
-      - name: Parse dbt project
-        working-directory: binance_analytics
-        run: |
-          dbt parse
-
-      - name: Compile dbt project
-        working-directory: binance_analytics
-        run: |
-          dbt compile
+          dbt parse \
+            --profiles-dir . \
+            --no-partial-parse
