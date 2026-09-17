@@ -41,6 +41,7 @@ Both Scheduler jobs use `Etc/UTC` and are enabled through Terraform.
 - Terraform-managed infrastructure with deletion protection
 - Required BigLake partition filters
 - ERROR-severity pipeline alerts with email notification
+- Stage-level Silver and Gold run history in BigQuery
 - Monthly VND 500,000 alert-only billing guardrail
 - Zero-retry bounded Ingestor execution
 - Daily scheduling to control development cost

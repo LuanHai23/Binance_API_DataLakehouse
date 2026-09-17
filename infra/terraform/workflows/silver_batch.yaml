@@ -1,323 +1,402 @@
 main:
   params: [args]
   steps:
-    - init:
+    - init_run_audit:
         assign:
-          - project_id: ${sys.get_env("BINANCE_PROJECT_ID")}
-          - region: ${sys.get_env("BINANCE_REGION")}
-          - environment: ${sys.get_env("BINANCE_ENVIRONMENT")}
-          - bronze_base_uri: ${sys.get_env("BRONZE_BASE_URI")}
-          - spark_service_account: ${sys.get_env("SPARK_SERVICE_ACCOUNT")}
-          - spark_subnetwork: ${sys.get_env("SPARK_SUBNETWORK")}
-          - spark_staging_bucket: ${sys.get_env("SPARK_STAGING_BUCKET")}
-          - silver_base_uri: ${sys.get_env("SILVER_BASE_URI")}
-          - silver_script_uri: ${sys.get_env("SILVER_SCRIPT_URI")}
-          - silver_code_version: ${sys.get_env("SILVER_CODE_VERSION")}
-          - workflow_execution_id: ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID")}
-          - input_uri: ${map.get(args, "input_uri")}
-          - source_batch_id: ${map.get(args, "source_batch_id")}
-          - target_hour: ${map.get(args, "target_hour")}
-          - window_mode: "explicit"
-          - window_timestamp: null
-          - poll_count: 0
-          - max_polls: 150
-          - gold_poll_count: 0
-          - gold_max_polls: 30
+          - run_started_at: ${time.format(sys.now())}
+          - audit_row:
+              run_date: ${text.substring(run_started_at, 0, 10)}
+              run_id: ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID")}
+              source_batch: null
+              stage: "silver"
+              status: "RUNNING"
+              started_at: ${run_started_at}
+              finished_at: null
+              input_rows: null
+              output_rows: null
+              resource_name: null
+              error_message: null
+    - execute_pipeline:
+        try:
+          steps:
+            - init:
+                assign:
+                  - project_id: ${sys.get_env("BINANCE_PROJECT_ID")}
+                  - region: ${sys.get_env("BINANCE_REGION")}
+                  - environment: ${sys.get_env("BINANCE_ENVIRONMENT")}
+                  - bronze_base_uri: ${sys.get_env("BRONZE_BASE_URI")}
+                  - spark_service_account: ${sys.get_env("SPARK_SERVICE_ACCOUNT")}
+                  - spark_subnetwork: ${sys.get_env("SPARK_SUBNETWORK")}
+                  - spark_staging_bucket: ${sys.get_env("SPARK_STAGING_BUCKET")}
+                  - silver_base_uri: ${sys.get_env("SILVER_BASE_URI")}
+                  - silver_script_uri: ${sys.get_env("SILVER_SCRIPT_URI")}
+                  - silver_code_version: ${sys.get_env("SILVER_CODE_VERSION")}
+                  - workflow_execution_id: ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID")}
+                  - input_uri: ${map.get(args, "input_uri")}
+                  - source_batch_id: ${map.get(args, "source_batch_id")}
+                  - audit_row.source_batch: ${source_batch_id}
+                  - target_hour: ${map.get(args, "target_hour")}
+                  - window_mode: "explicit"
+                  - window_timestamp: null
+                  - poll_count: 0
+                  - max_polls: 150
+                  - gold_poll_count: 0
+                  - gold_max_polls: 30
 
-    - validate_input_pair:
-        switch:
-          - condition: ${(input_uri == null or input_uri == "") and source_batch_id != null and source_batch_id != ""}
-            raise: "input_uri is required when source_batch_id is provided"
-          - condition: ${(source_batch_id == null or source_batch_id == "") and input_uri != null and input_uri != ""}
-            raise: "source_batch_id is required when input_uri is provided"
-          - condition: ${input_uri != null and input_uri != "" and target_hour != null and target_hour != ""}
-            raise: "target_hour cannot be combined with explicit input arguments"
+            - validate_input_pair:
+                switch:
+                  - condition: ${(input_uri == null or input_uri == "") and source_batch_id != null and source_batch_id != ""}
+                    raise: "input_uri is required when source_batch_id is provided"
+                  - condition: ${(source_batch_id == null or source_batch_id == "") and input_uri != null and input_uri != ""}
+                    raise: "source_batch_id is required when input_uri is provided"
+                  - condition: ${input_uri != null and input_uri != "" and target_hour != null and target_hour != ""}
+                    raise: "target_hour cannot be combined with explicit input arguments"
 
-    - choose_window:
-        switch:
-          - condition: ${input_uri != null and input_uri != ""}
-            next: build_identifiers
-          - condition: ${target_hour != null and target_hour != ""}
-            next: parse_target_hour
-        next: derive_previous_hour
+            - choose_window:
+                switch:
+                  - condition: ${input_uri != null and input_uri != ""}
+                    next: build_identifiers
+                  - condition: ${target_hour != null and target_hour != ""}
+                    next: parse_target_hour
+                next: derive_previous_hour
 
-    - parse_target_hour:
-        assign:
-          - window_timestamp: ${time.format(time.parse(target_hour))}
-          - window_mode: "target_hour"
-        next: derive_window_parts
+            - parse_target_hour:
+                assign:
+                  - window_timestamp: ${time.format(time.parse(target_hour))}
+                  - window_mode: "target_hour"
+                next: derive_window_parts
 
-    - derive_previous_hour:
-        assign:
-          - window_timestamp: ${time.format(sys.now() - 3600)}
-          - window_mode: "previous_hour"
+            - derive_previous_hour:
+                assign:
+                  - window_timestamp: ${time.format(sys.now() - 3600)}
+                  - window_mode: "previous_hour"
 
-    - derive_window_parts:
-        assign:
-          - window_year: ${text.substring(window_timestamp, 0, 4)}
-          - window_month: ${text.substring(window_timestamp, 5, 7)}
-          - window_day: ${text.substring(window_timestamp, 8, 10)}
-          - window_hour: ${text.substring(window_timestamp, 11, 13)}
+            - derive_window_parts:
+                assign:
+                  - window_year: ${text.substring(window_timestamp, 0, 4)}
+                  - window_month: ${text.substring(window_timestamp, 5, 7)}
+                  - window_day: ${text.substring(window_timestamp, 8, 10)}
+                  - window_hour: ${text.substring(window_timestamp, 11, 13)}
 
-    - set_window_input:
-        assign:
-          - input_uri: ${bronze_base_uri + "/raw/aggtrade/" + window_year + "/" + window_month + "/" + window_day + "/" + window_hour + "/*.jsonl"}
-          - source_batch_id: ${window_year + window_month + window_day + "t" + window_hour + "z"}
+            - set_window_input:
+                assign:
+                  - input_uri: ${bronze_base_uri + "/raw/aggtrade/" + window_year + "/" + window_month + "/" + window_day + "/" + window_hour + "/*.jsonl"}
+                  - source_batch_id: ${window_year + window_month + window_day + "t" + window_hour + "z"}
 
-    - build_identifiers:
-        assign:
-          - batch_id: ${"silver-wf-" + source_batch_id + "-" + silver_code_version}
-          - create_url: ${"https://dataproc.googleapis.com/v1/projects/" + project_id + "/locations/" + region + "/batches"}
+            - build_identifiers:
+                assign:
+                  - batch_id: ${"silver-wf-" + source_batch_id + "-" + silver_code_version}
+                  - create_url: ${"https://dataproc.googleapis.com/v1/projects/" + project_id + "/locations/" + region + "/batches"}
 
-    - build_request:
-        assign:
-          - batch_url: ${create_url + "/" + batch_id}
-          - batch_body:
-              labels:
-                application: "binance-lakehouse"
-                environment: ${environment}
-                component: "silver"
-                orchestrator: "workflows"
-              pysparkBatch:
-                mainPythonFileUri: ${silver_script_uri}
+            - build_request:
+                assign:
+                  - batch_url: ${create_url + "/" + batch_id}
+                  - batch_body:
+                      labels:
+                        application: "binance-lakehouse"
+                        environment: ${environment}
+                        component: "silver"
+                        orchestrator: "workflows"
+                      pysparkBatch:
+                        mainPythonFileUri: ${silver_script_uri}
+                        args:
+                          - ${"--input-uri=" + input_uri}
+                          - ${"--silver-base-uri=" + silver_base_uri}
+                          - ${"--batch-id=" + source_batch_id}
+                      runtimeConfig:
+                        version: "2.3"
+                        properties:
+                          dataproc.tier: "standard"
+                          spark.dynamicAllocation.initialExecutors: "2"
+                          spark.dynamicAllocation.minExecutors: "2"
+                          spark.dynamicAllocation.maxExecutors: "2"
+                          spark.sql.shuffle.partitions: "8"
+                      environmentConfig:
+                        executionConfig:
+                          serviceAccount: ${spark_service_account}
+                          subnetworkUri: ${spark_subnetwork}
+                          stagingBucket: ${spark_staging_bucket}
+                          ttl: "1200s"
+
+            - prepare_silver_audit:
+                assign:
+                  - audit_row.source_batch: ${source_batch_id}
+                  - audit_row.resource_name: ${"projects/" + project_id + "/locations/" + region + "/batches/" + batch_id}
+
+            - record_silver_start:
+                call: write_run_audit
                 args:
-                  - ${"--input-uri=" + input_uri}
-                  - ${"--silver-base-uri=" + silver_base_uri}
-                  - ${"--batch-id=" + source_batch_id}
-              runtimeConfig:
-                version: "2.3"
-                properties:
-                  dataproc.tier: "standard"
-                  spark.dynamicAllocation.initialExecutors: "2"
-                  spark.dynamicAllocation.minExecutors: "2"
-                  spark.dynamicAllocation.maxExecutors: "2"
-                  spark.sql.shuffle.partitions: "8"
-              environmentConfig:
-                executionConfig:
-                  serviceAccount: ${spark_service_account}
-                  subnetworkUri: ${spark_subnetwork}
-                  stagingBucket: ${spark_staging_bucket}
-                  ttl: "1200s"
+                  row: ${audit_row}
 
-    - submit:
-        call: submit_batch
-        args:
-          create_url: ${create_url}
-          batch_id: ${batch_id}
-          batch_body: ${batch_body}
-        result: submission
+            - submit:
+                call: submit_batch
+                args:
+                  create_url: ${create_url}
+                  batch_id: ${batch_id}
+                  batch_body: ${batch_body}
+                result: submission
 
-    - wait_before_poll:
-        call: sys.sleep
-        args:
-          seconds: 10
+            - wait_before_poll:
+                call: sys.sleep
+                args:
+                  seconds: 10
 
-    - get_batch:
-        call: http.get
-        args:
-          url: ${batch_url}
-          auth:
-            type: OAuth2
-        result: batch_response
+            - get_batch:
+                call: http.get
+                args:
+                  url: ${batch_url}
+                  auth:
+                    type: OAuth2
+                result: batch_response
 
-    - check_batch:
-        switch:
-          - condition: ${batch_response.body.state == "SUCCEEDED"}
-            next: prepare_gold_query
-          - condition: ${batch_response.body.state == "FAILED" or batch_response.body.state == "CANCELLED"}
-            next: batch_failed
-          - condition: ${poll_count >= max_polls}
-            next: polling_timeout
-        next: increment_poll
+            - check_batch:
+                switch:
+                  - condition: ${batch_response.body.state == "SUCCEEDED"}
+                    next: mark_silver_success
+                  - condition: ${batch_response.body.state == "FAILED" or batch_response.body.state == "CANCELLED"}
+                    next: batch_failed
+                  - condition: ${poll_count >= max_polls}
+                    next: polling_timeout
+                next: increment_poll
 
-    - increment_poll:
-        assign:
-          - poll_count: ${poll_count + 1}
-        next: wait_before_poll
+            - increment_poll:
+                assign:
+                  - poll_count: ${poll_count + 1}
+                next: wait_before_poll
 
-    - prepare_gold_query:
-        assign:
-          - gold_event_date: ${text.substring(source_batch_id, 0, 4) + "-" + text.substring(source_batch_id, 4, 6) + "-" + text.substring(source_batch_id, 6, 8)}
-          - gold_query_request:
-              query: __GOLD_MERGE_QUERY_JSON__
-              useLegacySql: false
-              useQueryCache: false
-              maxResults: 1
-              maximumBytesBilled: "1000000000"
-              location: ${region}
-              timeoutMs: 180000
-              requestId: ${workflow_execution_id}
-              parameterMode: "NAMED"
-              labels:
-                component: "gold"
-                purpose: "workflow_merge"
-              queryParameters:
-                - name: "source_batch"
-                  parameterType:
-                    type: "STRING"
-                  parameterValue:
-                    value: ${source_batch_id}
-                - name: "event_date"
-                  parameterType:
-                    type: "DATE"
-                  parameterValue:
-                    value: ${gold_event_date}
-                - name: "allow_mutation"
-                  parameterType:
-                    type: "BOOL"
-                  parameterValue:
-                    value: "true"
+            - mark_silver_success:
+                assign:
+                  - audit_row.status: "SUCCEEDED"
+                  - audit_row.finished_at: ${time.format(sys.now())}
 
-    - submit_gold_query:
-        call: googleapis.bigquery.v2.jobs.query
-        args:
-          projectId: ${project_id}
-          body: ${gold_query_request}
-        result: gold_query_result
+            - record_silver_success:
+                call: write_run_audit
+                args:
+                  row: ${audit_row}
 
-    - capture_gold_job:
-        assign:
-          - gold_job_id: ${gold_query_result.jobReference.jobId}
+            - prepare_gold_audit:
+                assign:
+                  - audit_row.stage: "gold"
+                  - audit_row.status: "RUNNING"
+                  - audit_row.started_at: ${time.format(sys.now())}
+                  - audit_row.finished_at: null
+                  - audit_row.resource_name: null
 
-    - check_gold_query:
-        switch:
-          - condition: ${gold_query_result.jobComplete == true}
-            next: check_gold_errors
-          - condition: ${gold_poll_count >= gold_max_polls}
-            next: gold_query_timeout
-        next: increment_gold_poll
+            - record_gold_start:
+                call: write_run_audit
+                args:
+                  row: ${audit_row}
 
-    - increment_gold_poll:
-        assign:
-          - gold_poll_count: ${gold_poll_count + 1}
+            - prepare_gold_query:
+                assign:
+                  - gold_event_date: ${text.substring(source_batch_id, 0, 4) + "-" + text.substring(source_batch_id, 4, 6) + "-" + text.substring(source_batch_id, 6, 8)}
+                  - gold_query_request:
+                      query: __GOLD_MERGE_QUERY_JSON__
+                      useLegacySql: false
+                      useQueryCache: false
+                      maxResults: 1
+                      maximumBytesBilled: "1000000000"
+                      location: ${region}
+                      timeoutMs: 180000
+                      requestId: ${workflow_execution_id}
+                      parameterMode: "NAMED"
+                      labels:
+                        component: "gold"
+                        purpose: "workflow_merge"
+                      queryParameters:
+                        - name: "source_batch"
+                          parameterType:
+                            type: "STRING"
+                          parameterValue:
+                            value: ${source_batch_id}
+                        - name: "event_date"
+                          parameterType:
+                            type: "DATE"
+                          parameterValue:
+                            value: ${gold_event_date}
+                        - name: "allow_mutation"
+                          parameterType:
+                            type: "BOOL"
+                          parameterValue:
+                            value: "true"
 
-    - poll_gold_query:
-        call: googleapis.bigquery.v2.jobs.getQueryResults
-        args:
-          projectId: ${project_id}
-          jobId: ${gold_job_id}
-          location: ${region}
-          maxResults: 1
-          timeoutMs: 10000
-        result: gold_query_result
-        next: check_gold_query
+            - submit_gold_query:
+                call: googleapis.bigquery.v2.jobs.query
+                args:
+                  projectId: ${project_id}
+                  body: ${gold_query_request}
+                result: gold_query_result
 
-    - check_gold_errors:
-        switch:
-          - condition: ${map.get(gold_query_result, "errors") != null}
-            next: gold_query_failed
-        next: check_gold_result_shape
+            - capture_gold_job:
+                assign:
+                  - gold_job_id: ${gold_query_result.jobReference.jobId}
+                  - audit_row.resource_name: ${"projects/" + project_id + "/jobs/" + gold_job_id}
 
-    - check_gold_result_shape:
-        switch:
-          - condition: ${map.get(gold_query_result, "totalRows") != "1"}
-            next: gold_result_invalid
-          - condition: ${map.get(gold_query_result, "rows") == null}
-            next: gold_result_invalid
-          - condition: ${len(gold_query_result.rows) != 1}
-            next: gold_result_invalid
-        next: parse_gold_result
+            - check_gold_query:
+                switch:
+                  - condition: ${gold_query_result.jobComplete == true}
+                    next: check_gold_errors
+                  - condition: ${gold_poll_count >= gold_max_polls}
+                    next: gold_query_timeout
+                next: increment_gold_poll
 
-    - parse_gold_result:
-        assign:
-          - gold_result_source_batch: ${gold_query_result.rows[0].f[0].v}
-          - gold_result_event_date: ${gold_query_result.rows[0].f[1].v}
-          - gold_mutation_enabled: ${gold_query_result.rows[0].f[2].v}
-          - gold_source_rows: ${gold_query_result.rows[0].f[3].v}
-          - gold_eligible_rows: ${gold_query_result.rows[0].f[4].v}
-          - gold_staging_rows: ${gold_query_result.rows[0].f[5].v}
-          - gold_distinct_symbols: ${gold_query_result.rows[0].f[6].v}
-          - gold_staged_trade_count: ${gold_query_result.rows[0].f[7].v}
-          - gold_staged_large_trade_count: ${gold_query_result.rows[0].f[8].v}
-          - gold_target_rows_after: ${gold_query_result.rows[0].f[9].v}
-          - gold_target_trade_count_after: ${gold_query_result.rows[0].f[10].v}
-          - gold_evaluated_at: ${gold_query_result.rows[0].f[11].v}
+            - increment_gold_poll:
+                assign:
+                  - gold_poll_count: ${gold_poll_count + 1}
 
-    - validate_gold_identity:
-        switch:
-          - condition: ${gold_result_source_batch != source_batch_id or gold_result_event_date != gold_event_date or gold_mutation_enabled != "true"}
-            next: gold_acceptance_failed
-        next: validate_gold_reconciliation
+            - poll_gold_query:
+                call: googleapis.bigquery.v2.jobs.getQueryResults
+                args:
+                  projectId: ${project_id}
+                  jobId: ${gold_job_id}
+                  location: ${region}
+                  maxResults: 1
+                  timeoutMs: 10000
+                result: gold_query_result
+                next: check_gold_query
 
-    - validate_gold_reconciliation:
-        switch:
-          - condition: ${gold_source_rows == "0" or gold_staging_rows == "0" or gold_distinct_symbols == "0"}
-            next: gold_acceptance_failed
-          - condition: ${gold_source_rows != gold_eligible_rows or gold_source_rows != gold_staged_trade_count}
-            next: gold_acceptance_failed
-          - condition: ${gold_staging_rows != gold_target_rows_after or gold_staged_trade_count != gold_target_trade_count_after}
-            next: gold_acceptance_failed
-        next: success
+            - check_gold_errors:
+                switch:
+                  - condition: ${map.get(gold_query_result, "errors") != null}
+                    next: gold_query_failed
+                next: check_gold_result_shape
 
-    - success:
-        return:
-          status: "SUCCEEDED"
-          submission: ${submission.status}
-          batch_id: ${batch_id}
-          batch_name: ${batch_response.body.name}
-          source_batch_id: ${source_batch_id}
-          input_uri: ${input_uri}
-          polls: ${poll_count}
-          window_mode: ${window_mode}
-          window_timestamp: ${window_timestamp}
-          gold:
-            status: "SUCCEEDED"
-            job_id: ${gold_job_id}
-            source_batch_id: ${gold_result_source_batch}
-            event_date: ${gold_result_event_date}
-            source_rows: ${gold_source_rows}
-            candle_rows: ${gold_target_rows_after}
-            distinct_symbols: ${gold_distinct_symbols}
-            trade_count: ${gold_target_trade_count_after}
-            large_trade_count: ${gold_staged_large_trade_count}
-            query_polls: ${gold_poll_count}
-            evaluated_at: ${gold_evaluated_at}
+            - check_gold_result_shape:
+                switch:
+                  - condition: ${map.get(gold_query_result, "totalRows") != "1"}
+                    next: gold_result_invalid
+                  - condition: ${map.get(gold_query_result, "rows") == null}
+                    next: gold_result_invalid
+                  - condition: ${len(gold_query_result.rows) != 1}
+                    next: gold_result_invalid
+                next: parse_gold_result
+
+            - parse_gold_result:
+                assign:
+                  - gold_result_source_batch: ${gold_query_result.rows[0].f[0].v}
+                  - gold_result_event_date: ${gold_query_result.rows[0].f[1].v}
+                  - gold_mutation_enabled: ${gold_query_result.rows[0].f[2].v}
+                  - gold_source_rows: ${gold_query_result.rows[0].f[3].v}
+                  - gold_eligible_rows: ${gold_query_result.rows[0].f[4].v}
+                  - gold_staging_rows: ${gold_query_result.rows[0].f[5].v}
+                  - gold_distinct_symbols: ${gold_query_result.rows[0].f[6].v}
+                  - gold_staged_trade_count: ${gold_query_result.rows[0].f[7].v}
+                  - gold_staged_large_trade_count: ${gold_query_result.rows[0].f[8].v}
+                  - gold_target_rows_after: ${gold_query_result.rows[0].f[9].v}
+                  - gold_target_trade_count_after: ${gold_query_result.rows[0].f[10].v}
+                  - gold_evaluated_at: ${gold_query_result.rows[0].f[11].v}
+                  - audit_row.input_rows: ${gold_source_rows}
+                  - audit_row.output_rows: ${gold_target_rows_after}
+
+            - validate_gold_identity:
+                switch:
+                  - condition: ${gold_result_source_batch != source_batch_id or gold_result_event_date != gold_event_date or gold_mutation_enabled != "true"}
+                    next: gold_acceptance_failed
+                next: validate_gold_reconciliation
+
+            - validate_gold_reconciliation:
+                switch:
+                  - condition: ${gold_source_rows == "0" or gold_staging_rows == "0" or gold_distinct_symbols == "0"}
+                    next: gold_acceptance_failed
+                  - condition: ${gold_source_rows != gold_eligible_rows or gold_source_rows != gold_staged_trade_count}
+                    next: gold_acceptance_failed
+                  - condition: ${gold_staging_rows != gold_target_rows_after or gold_staged_trade_count != gold_target_trade_count_after}
+                    next: gold_acceptance_failed
+                next: mark_gold_success
+
+            - mark_gold_success:
+                assign:
+                  - audit_row.status: "SUCCEEDED"
+                  - audit_row.finished_at: ${time.format(sys.now())}
+
+            - record_gold_success:
+                call: write_run_audit
+                args:
+                  row: ${audit_row}
+
+            - success:
+                return:
+                  status: "SUCCEEDED"
+                  submission: ${submission.status}
+                  batch_id: ${batch_id}
+                  batch_name: ${batch_response.body.name}
+                  source_batch_id: ${source_batch_id}
+                  input_uri: ${input_uri}
+                  polls: ${poll_count}
+                  window_mode: ${window_mode}
+                  window_timestamp: ${window_timestamp}
+                  gold:
+                    status: "SUCCEEDED"
+                    job_id: ${gold_job_id}
+                    source_batch_id: ${gold_result_source_batch}
+                    event_date: ${gold_result_event_date}
+                    source_rows: ${gold_source_rows}
+                    candle_rows: ${gold_target_rows_after}
+                    distinct_symbols: ${gold_distinct_symbols}
+                    trade_count: ${gold_target_trade_count_after}
+                    large_trade_count: ${gold_staged_large_trade_count}
+                    query_polls: ${gold_poll_count}
+                    evaluated_at: ${gold_evaluated_at}
 
 
-    - gold_query_timeout:
-        raise:
-          message: "Timed out waiting for the BigQuery Gold MERGE"
-          job_id: ${gold_job_id}
-          polls: ${gold_poll_count}
+            - gold_query_timeout:
+                raise:
+                  message: "Timed out waiting for the BigQuery Gold MERGE"
+                  job_id: ${gold_job_id}
+                  polls: ${gold_poll_count}
 
-    - gold_query_failed:
-        raise:
-          message: "BigQuery Gold MERGE returned errors"
-          job_id: ${gold_job_id}
-          errors: ${map.get(gold_query_result, "errors")}
+            - gold_query_failed:
+                raise:
+                  message: "BigQuery Gold MERGE returned errors"
+                  job_id: ${gold_job_id}
+                  errors: ${map.get(gold_query_result, "errors")}
 
-    - gold_result_invalid:
-        raise:
-          message: "BigQuery Gold MERGE returned an invalid result shape"
-          job_id: ${gold_job_id}
-          total_rows: ${map.get(gold_query_result, "totalRows")}
+            - gold_result_invalid:
+                raise:
+                  message: "BigQuery Gold MERGE returned an invalid result shape"
+                  job_id: ${gold_job_id}
+                  total_rows: ${map.get(gold_query_result, "totalRows")}
 
-    - gold_acceptance_failed:
-        raise:
-          message: "Gold post-MERGE reconciliation failed"
-          job_id: ${gold_job_id}
-          expected_source_batch: ${source_batch_id}
-          actual_source_batch: ${gold_result_source_batch}
-          expected_event_date: ${gold_event_date}
-          actual_event_date: ${gold_result_event_date}
-          source_rows: ${gold_source_rows}
-          eligible_rows: ${gold_eligible_rows}
-          staging_rows: ${gold_staging_rows}
-          target_rows_after: ${gold_target_rows_after}
-          staged_trade_count: ${gold_staged_trade_count}
-          target_trade_count_after: ${gold_target_trade_count_after}
+            - gold_acceptance_failed:
+                raise:
+                  message: "Gold post-MERGE reconciliation failed"
+                  job_id: ${gold_job_id}
+                  expected_source_batch: ${source_batch_id}
+                  actual_source_batch: ${gold_result_source_batch}
+                  expected_event_date: ${gold_event_date}
+                  actual_event_date: ${gold_result_event_date}
+                  source_rows: ${gold_source_rows}
+                  eligible_rows: ${gold_eligible_rows}
+                  staging_rows: ${gold_staging_rows}
+                  target_rows_after: ${gold_target_rows_after}
+                  staged_trade_count: ${gold_staged_trade_count}
+                  target_trade_count_after: ${gold_target_trade_count_after}
 
-    - batch_failed:
-        raise:
-          message: ${"Dataproc batch ended in state " + batch_response.body.state}
-          batch_id: ${batch_id}
-          state: ${batch_response.body.state}
+            - batch_failed:
+                raise:
+                  message: ${"Dataproc batch ended in state " + batch_response.body.state}
+                  batch_id: ${batch_id}
+                  state: ${batch_response.body.state}
 
-    - polling_timeout:
-        raise:
-          message: "Timed out waiting for Dataproc batch"
-          batch_id: ${batch_id}
-          polls: ${poll_count}
+            - polling_timeout:
+                raise:
+                  message: "Timed out waiting for Dataproc batch"
+                  batch_id: ${batch_id}
+                  polls: ${poll_count}
+        except:
+          as: pipeline_error
+          steps:
+            - mark_stage_failed:
+                assign:
+                  - audit_row.status: "FAILED"
+                  - audit_row.finished_at: ${time.format(sys.now())}
+                  - audit_row.error_message: ${json.encode_to_string(pipeline_error)}
+            - record_stage_failure:
+                call: write_run_audit
+                args:
+                  row: ${audit_row}
+            - preserve_original_error:
+                raise: ${pipeline_error}
 
 submit_batch:
   params: [create_url, batch_id, batch_body]

@@ -7,7 +7,7 @@
 # Run status: RUNNING, SUCCEEDED, FAILED, CANCELLED, TIMED_OUT or UNKNOWN.
 # DQ status: PASS, FAIL, ERROR or SKIPPED; unevaluated checks are never PASS.
 # Unknown counts stay NULL. resource_name points to the job/batch for debugging.
-# This file creates storage only; pipeline writers and their IAM follow next.
+# The Workflow writes run history; per-check DQ writers follow separately.
 locals {
   observability_tables = {
     pipeline_run_audit = {
@@ -95,4 +95,18 @@ resource "google_bigquery_table" "ops" {
     component  = "observability"
     data_layer = "ops"
   }
+}
+
+resource "google_bigquery_table_iam_member" "workflow_run_audit_editor" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.ops.dataset_id
+  table_id   = google_bigquery_table.ops["pipeline_run_audit"].table_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${google_service_account.binance_workflow.email}"
+}
+
+resource "google_project_iam_member" "workflow_audit_log_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.binance_workflow.email}"
 }

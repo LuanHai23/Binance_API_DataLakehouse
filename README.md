@@ -16,6 +16,7 @@ The GCP MVP is accepted, runs automatically once daily, and includes alerting, d
 - [GCP MVP overview](docs/gcp-mvp/README.md)
 - [Operations runbook](docs/gcp-mvp/OPERATIONS_RUNBOOK.md)
 - [Acceptance evidence](docs/gcp-mvp/ACCEPTANCE_EVIDENCE.md)
+- [Silver and Gold run history](docs/gcp-mvp/RUN_AUDIT.md)
 - [Cloud Gold data contract](docs/gcp-gold/DATA_CONTRACT.md)
 - [Cloud Gold acceptance evidence](docs/gcp-gold/ACCEPTANCE_EVIDENCE.md)
 - [Cloud BI acceptance evidence](docs/gcp-gold/BI_ACCEPTANCE_EVIDENCE.md)

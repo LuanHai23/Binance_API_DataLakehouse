@@ -1,0 +1,47 @@
+-- Every target-table read uses a direct run_date filter so the required
+-- partition filter is enforced. A later event wins over an older event.
+BEGIN TRANSACTION;
+
+UPDATE `${PROJECT_ID}.${OPS_DATASET}.pipeline_run_audit` AS target
+SET
+  source_batch = JSON_VALUE(@audit_row, '$.source_batch'),
+  status = JSON_VALUE(@audit_row, '$.status'),
+  started_at = TIMESTAMP(JSON_VALUE(@audit_row, '$.started_at')),
+  finished_at = TIMESTAMP(JSON_VALUE(@audit_row, '$.finished_at')),
+  input_rows = CAST(JSON_VALUE(@audit_row, '$.input_rows') AS INT64),
+  output_rows = CAST(JSON_VALUE(@audit_row, '$.output_rows') AS INT64),
+  resource_name = JSON_VALUE(@audit_row, '$.resource_name'),
+  error_message = LEFT(JSON_VALUE(@audit_row, '$.error_message'), 4000),
+  updated_at = TIMESTAMP(JSON_VALUE(@audit_row, '$.updated_at'))
+WHERE target.run_date = @run_date
+  AND target.run_id = JSON_VALUE(@audit_row, '$.run_id')
+  AND target.stage = JSON_VALUE(@audit_row, '$.stage')
+  AND TIMESTAMP(JSON_VALUE(@audit_row, '$.updated_at')) >= target.updated_at;
+
+INSERT INTO `${PROJECT_ID}.${OPS_DATASET}.pipeline_run_audit` (
+  run_date, run_id, source_batch, stage, status, started_at,
+  finished_at, input_rows, output_rows, resource_name, error_message, updated_at
+)
+SELECT
+  @run_date,
+  JSON_VALUE(@audit_row, '$.run_id'),
+  JSON_VALUE(@audit_row, '$.source_batch'),
+  JSON_VALUE(@audit_row, '$.stage'),
+  JSON_VALUE(@audit_row, '$.status'),
+  TIMESTAMP(JSON_VALUE(@audit_row, '$.started_at')),
+  TIMESTAMP(JSON_VALUE(@audit_row, '$.finished_at')),
+  CAST(JSON_VALUE(@audit_row, '$.input_rows') AS INT64),
+  CAST(JSON_VALUE(@audit_row, '$.output_rows') AS INT64),
+  JSON_VALUE(@audit_row, '$.resource_name'),
+  LEFT(JSON_VALUE(@audit_row, '$.error_message'), 4000),
+  TIMESTAMP(JSON_VALUE(@audit_row, '$.updated_at'))
+FROM (SELECT 1) AS singleton
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM `${PROJECT_ID}.${OPS_DATASET}.pipeline_run_audit` AS target
+  WHERE target.run_date = @run_date
+    AND target.run_id = JSON_VALUE(@audit_row, '$.run_id')
+    AND target.stage = JSON_VALUE(@audit_row, '$.stage')
+);
+
+COMMIT TRANSACTION;

@@ -27,9 +27,19 @@ resource "google_workflows_workflow" "silver_batch" {
   }
 
   source_contents = replace(
-    file("${path.module}/workflows/silver_batch.yaml"),
-    "__GOLD_MERGE_QUERY_JSON__",
-    jsonencode(file("${path.module}/../../sql/gcp_gold/fact_market_candles_1m_merge.sql")),
+    replace(
+      join("\n", [
+        file("${path.module}/workflows/silver_batch.yaml"),
+        file("${path.module}/workflows/run_audit.yaml"),
+      ]),
+      "__GOLD_MERGE_QUERY_JSON__",
+      jsonencode(file("${path.module}/../../sql/gcp_gold/fact_market_candles_1m_merge.sql")),
+    ),
+    "__RUN_AUDIT_QUERY_JSON__",
+    jsonencode(templatefile("${path.module}/../../sql/gcp_ops/upsert_pipeline_run.sql.tftpl", {
+      PROJECT_ID  = var.project_id
+      OPS_DATASET = google_bigquery_dataset.ops.dataset_id
+    })),
   )
 
   depends_on = [
@@ -39,5 +49,7 @@ resource "google_workflows_workflow" "silver_batch" {
     google_project_iam_member.workflow_gold_job_runner,
     google_bigquery_table_iam_member.workflow_silver_aggtrade_reader,
     google_bigquery_table_iam_member.workflow_gold_candle_editor,
+    google_bigquery_table_iam_member.workflow_run_audit_editor,
+    google_project_iam_member.workflow_audit_log_writer,
   ]
 }
