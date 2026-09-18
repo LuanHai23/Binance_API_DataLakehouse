@@ -6,6 +6,11 @@ This is the deployed GCP Bronze-to-Silver data pipeline for Binance aggTrade eve
 
 ## Architecture
 
+[![Deployed GCP architecture for the Binance lakehouse](images/binance-gcp-lakehouse-architecture.png)](images/binance-gcp-lakehouse-architecture.png)
+
+The diagram shows the accepted daily path from Binance ingestion through Bronze, Silver, BigLake, native BigQuery Gold, and Looker Studio, together with its orchestration and operational controls.
+
+
 ```mermaid
 flowchart TD
     Scheduler["Cloud Scheduler"] --> Ingestor["Cloud Run Ingestor"]

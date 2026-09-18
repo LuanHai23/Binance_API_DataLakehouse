@@ -21,6 +21,12 @@ The GCP MVP is accepted, runs automatically once daily, and includes alerting, d
 - [Cloud Gold acceptance evidence](docs/gcp-gold/ACCEPTANCE_EVIDENCE.md)
 - [Cloud BI acceptance evidence](docs/gcp-gold/BI_ACCEPTANCE_EVIDENCE.md)
 
+### Deployed GCP Architecture
+
+[![Deployed GCP architecture for the Binance lakehouse](docs/gcp-mvp/images/binance-gcp-lakehouse-architecture.png)](docs/gcp-mvp/images/binance-gcp-lakehouse-architecture.png)
+
+The diagram separates the deployed data path, orchestration controls, data-quality gates, observability, security, and cost guardrails.
+
 ### Cloud BI Preview
 
 [![Cloud BI Market Overview dashboard](docs/gcp-gold/images/gcp_market_overview_dashboard.png)](docs/gcp-gold/BI_ACCEPTANCE_EVIDENCE.md)
