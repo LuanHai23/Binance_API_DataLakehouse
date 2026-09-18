@@ -1,0 +1,17 @@
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "--file"
+      - "Dockerfile.producer"
+      - "--tag"
+      - "${_IMAGE_URI}"
+      - "."
+
+images:
+  - "${_IMAGE_URI}"
+
+options:
+  logging: "CLOUD_LOGGING_ONLY"
+
+timeout: "900s"

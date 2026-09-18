@@ -1,0 +1,67 @@
+# Best-effort audit: preserve the pipeline's result if audit storage is unavailable.
+write_run_audit:
+  params: [row]
+  steps:
+    - write:
+        try:
+          steps:
+            - stamp_event:
+                assign:
+                  - row.updated_at: ${time.format(sys.now())}
+            - upsert:
+                call: googleapis.bigquery.v2.jobs.insert
+                args:
+                  projectId: ${sys.get_env("BINANCE_PROJECT_ID")}
+                  body:
+                    jobReference:
+                      projectId: ${sys.get_env("BINANCE_PROJECT_ID")}
+                      location: ${sys.get_env("BINANCE_REGION")}
+                      jobId: ${"audit_" + uuid.generate()}
+                    configuration:
+                      jobTimeoutMs: "30000"
+                      labels:
+                        component: "observability"
+                        purpose: "run_audit"
+                      query:
+                        query: __RUN_AUDIT_QUERY_JSON__
+                        useLegacySql: false
+                        useQueryCache: false
+                        maximumBytesBilled: "100000000"
+                        parameterMode: "NAMED"
+                        queryParameters:
+                          - name: "run_date"
+                            parameterType:
+                              type: "DATE"
+                            parameterValue:
+                              value: ${row.run_date}
+                          - name: "audit_row"
+                            parameterType:
+                              type: "STRING"
+                            parameterValue:
+                              value: ${json.encode_to_string(row)}
+                  connector_params:
+                    timeout: 60
+        except:
+          as: audit_error
+          steps:
+            - log_audit_failure:
+                try:
+                  call: sys.log
+                  args:
+                    severity: "ERROR"
+                    json:
+                      event: "PIPELINE_RUN_AUDIT_WRITE_FAILED"
+                      run_id: ${row.run_id}
+                      source_batch: ${row.source_batch}
+                      stage: ${row.stage}
+                      status: ${row.status}
+                      error: ${audit_error}
+                except:
+                  as: logging_error
+                  steps:
+                    - preserve_pipeline_result:
+                        return: false
+            - audit_unavailable:
+                return: false
+    - audit_saved:
+        return: true

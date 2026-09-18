@@ -1,0 +1,8 @@
+*
+!requirements-producer.txt
+!kafka_producer/
+!kafka_producer/**
+
+**/__pycache__/
+**/*.pyc
+**/*.pyo
