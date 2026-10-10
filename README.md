@@ -766,7 +766,6 @@ This project is a milestone in my journey toward becoming a Data Engineer. Build
 
 I am currently open to Fresher Data Engineer and Data Engineer Intern opportunities.
 
-LinkedIn: Hải Luân Nguyễn Ngọc
 Email: nguyenngochailuan16112003@gmail.com
 
 # 🌟 Explore More
