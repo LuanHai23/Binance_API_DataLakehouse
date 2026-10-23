@@ -1,775 +1,269 @@
-# 🪙 Binance Real-Time Data Lakehouse
+# Binance Data Lakehouse
 
-A production-style local Data Engineering project that ingests live cryptocurrency trade data from Binance WebSocket API, streams it through Kafka, processes it with Apache Spark using a Medallion Architecture, stores data in MinIO and PostgreSQL, builds analytical marts with dbt, orchestrates the workflow with Apache Airflow, and visualizes business-ready insights in Metabase.
+**Local Analytics Platform & Deployed GCP MVP**
 
-This project demonstrates practical Data Engineering skills including streaming ingestion, micro-batch processing, data lake design, warehouse modeling, idempotent loading, data quality gates, SCD Type 2, pipeline audit logging, data freshness monitoring, dbt testing, and BI dashboarding.
+[![Binance Lakehouse CI](https://github.com/LuanHai23/Binance_API_DataLakehouse/actions/workflows/CI.yml/badge.svg)](https://github.com/LuanHai23/Binance_API_DataLakehouse/actions/workflows/CI.yml)
 
-## ☁️ Deployment Profiles
+An end-to-end Data Engineering project that transforms Binance market trades into validated datasets, one-minute OHLC candles, analytical marts, and dashboards.
 
-This repository contains two complementary execution profiles:
+The project began as a Docker-based local platform and was extended to a managed Google Cloud implementation. The repository preserves both profiles to demonstrate ingestion, distributed processing, warehouse modeling, orchestration, infrastructure as code, and operational controls.
 
-- **Local analytics profile:** Kafka, Spark, MinIO, PostgreSQL, dbt, Airflow, and Metabase demonstrate the complete Bronze, Silver, Gold, and BI workflow.
-- **Deployed GCP MVP:** Cloud Run, Pub/Sub, Cloud Storage, Workflows, Dataproc Serverless, BigLake, Monitoring, and Terraform demonstrate a managed Bronze-to-Silver cloud pipeline.
+**GCP MVP status: deployed, runtime-accepted, and merged into `main`.** The accepted scope includes Bronze, Silver, BigLake access, native BigQuery Gold, a BI mart, a dashboard, data-quality gates, run history, alerts, and repository CI.
 
-The GCP MVP is accepted, runs automatically once daily, and includes alerting, data-quality reconciliation, operational documentation, and a monthly billing guardrail. The managed cloud profile now extends through deterministic native BigQuery Gold one-minute candles and a BI-facing market overview visualized in Google Data Studio.
+Acceptance evidence records dated development milestones. It does not represent a live service-health check.
 
-- [GCP MVP overview](docs/gcp-mvp/README.md)
-- [Operations runbook](docs/gcp-mvp/OPERATIONS_RUNBOOK.md)
-- [Acceptance evidence](docs/gcp-mvp/ACCEPTANCE_EVIDENCE.md)
-- [Silver and Gold run history](docs/gcp-mvp/RUN_AUDIT.md)
-- [Cloud Gold data contract](docs/gcp-gold/DATA_CONTRACT.md)
-- [Cloud Gold acceptance evidence](docs/gcp-gold/ACCEPTANCE_EVIDENCE.md)
-- [Cloud BI acceptance evidence](docs/gcp-gold/BI_ACCEPTANCE_EVIDENCE.md)
+## Deployment Profiles
 
-### Deployed GCP Architecture
+| Component | Local analytics platform | Deployed GCP MVP |
+| --- | --- | --- |
+| Source | Binance public WebSocket trades | Binance public WebSocket aggTrade events |
+| Ingestion | Python producer and Kafka | Cloud Run Job and Pub/Sub |
+| Bronze storage | MinIO Parquet | Cloud Storage JSONL |
+| Silver processing | Containerized PySpark | Dataproc Serverless PySpark |
+| Silver access | MinIO Parquet | Cloud Storage Parquet and BigLake |
+| Gold and serving | Spark, PostgreSQL, and dbt | Native BigQuery SQL and a BI view |
+| Orchestration | Apache Airflow | Workflows and Cloud Scheduler |
+| Visualization | Metabase | Looker Studio |
+| Infrastructure | Docker Compose | Terraform and Cloud Build for the producer image |
+| Execution model | Continuous ingestion with micro-batch processing | One bounded ingestion window and scheduled processing per day |
 
-[![Deployed GCP architecture for the Binance lakehouse](docs/gcp-mvp/images/binance-gcp-lakehouse-architecture.png)](docs/gcp-mvp/images/binance-gcp-lakehouse-architecture.png)
+The profiles share the Bronze/Silver/Gold design, while their implementations and analytics scope differ. Local dbt models run against PostgreSQL; cloud Gold and its serving view use BigQuery SQL managed through Terraform and Workflows.
 
-The diagram separates the deployed data path, orchestration controls, data-quality gates, observability, security, and cost guardrails.
+## Data Products
 
-### Cloud BI Preview
+| Output | Local | GCP |
+| --- | --- | --- |
+| One-minute OHLC candles | PostgreSQL fact table | Native BigQuery fact table |
+| Market overview | dbt marts and Metabase | BigQuery mart and Looker Studio |
+| Liquidity, trade pressure, and volatility | Dedicated dbt marts and dashboards | Quote-volume ranking and buy/sell pressure in the overview dashboard |
+| Pipeline visibility | Airflow, warehouse audit logs, and freshness marts | Cloud Logging, Monitoring alerts, and Silver/Gold audit history |
+| Symbol metadata history | SCD Type 2 dimension | Outside the accepted cloud scope |
 
-[![Cloud BI Market Overview dashboard](docs/gcp-gold/images/gcp_market_overview_dashboard.png)](docs/gcp-gold/BI_ACCEPTANCE_EVIDENCE.md)
+## Deployed GCP MVP
 
----
+### Architecture
 
-# 🎯 Problem Statement
+[![Deployed GCP lakehouse architecture](docs/gcp-mvp/images/binance-gcp-lakehouse-architecture.png)](docs/gcp-mvp/images/binance-gcp-lakehouse-architecture.png)
 
-Cryptocurrency trade data is generated continuously at high frequency and is difficult to analyze directly from raw streaming events. Raw Binance WebSocket messages are semi-structured, high-volume, and not suitable for business analysis without proper ingestion, validation, transformation, aggregation, and monitoring.
+The data path is `Binance WebSocket → Cloud Run Job → Pub/Sub → Bronze GCS → Dataproc Serverless → Silver Parquet / BigLake → BigQuery Gold → BI mart → Looker Studio`.
 
-This project solves that problem by building a local production-style data lakehouse that transforms raw Binance trade events into analytics-ready market indicators and operational dashboards.
+| Stage | Responsibility |
+| --- | --- |
+| Ingestion | Validate event contracts and publish aggTrade events through an injectable publisher interface |
+| Bronze | Preserve raw events as JSONL in UTC-hour storage prefixes |
+| Silver | Validate, deduplicate, normalize, partition, and publish cleaned Parquet datasets |
+| BigLake | Expose Silver through a partition-filtered external table |
+| Gold | Reconstruct one-minute candles and persist them with a guarded, deterministic `MERGE` |
+| Serving | Expose `mart_market_overview` as a protected BigQuery logical view |
+| Operations | Coordinate stages with Workflows, record audit history, and report failures through Monitoring |
 
-The final output is not only stored data, but a set of dbt analytical marts and Metabase dashboards that help users monitor:
+### Schedule and Data Coverage
 
-- Market overview by trading symbol
-- Current price, trading volume, and price change
-- Liquidity ranking across crypto pairs
-- Buy/sell trade pressure
-- Volatility signals
-- Data freshness and pipeline health
+| Stage | UTC | Vietnam time | Behavior |
+| --- | --- | --- | --- |
+| Ingestion | 03:00 daily | 10:00 daily | Collect a bounded 55-minute window |
+| Silver and Gold | 04:10 daily | 11:10 daily | Process the preceding source hour and refresh Gold |
 
----
+This development schedule limits compute usage. It captures a daily sample of market activity rather than continuous 24-hour coverage.
 
-# Business Output
+The market overview uses `(W - 24 hours, W]`, where `W` is the latest stored Gold candle start. Missing candles are not filled. Prices and volume metrics describe collected trades; the latest stored price is not a real-time quote.
 
-The final output of this project is a set of Metabase dashboards built on top of dbt analytical marts in PostgreSQL.
+### Engineering Controls
 
-These dashboards turn high-volume raw trade events into actionable insights for both market monitoring and pipeline reliability.
+- **Infrastructure:** Terraform manages service APIs, workload identities, storage, networking, Workflows, Scheduler, BigQuery resources, and alert policies.
+- **Silver quality:** Pre-publish gates reject empty valid output, rejected records, duplicate event IDs, or an unexpected symbol set. Rejected records remain available in quarantine.
+- **Gold correctness:** Eligibility checks, deterministic candle construction, business-key validation, and reconciliation guard warehouse writes.
+- **Reruns:** Deterministic Dataproc batch identifiers support reuse of a successful batch; guarded Gold writes preserve candle keys on rerun.
+- **Run history:** BigQuery records Silver and Gold stage transitions, execution identifiers, resource references, available row counts, and errors.
+- **Access:** Dedicated service accounts, scoped IAM grants, partition filters, and table deletion protection limit access and accidental changes.
+- **Cost visibility:** Daily execution, bounded ingestion, query-byte limits, and a VND 500,000 monthly budget alert support development cost control. The budget is alert-only.
 
-### Market Analysis
+### Runtime Acceptance
 
-The Market Overview dashboard helps users answer:
+These are separate acceptance runs. Their counts describe different source batches.
 
-- Which trading symbols have the highest trading volume?
-- Which symbols are increasing or decreasing in price?
-- Which assets show stronger buy-side or sell-side activity?
-- What is the latest market condition by symbol?
+| Milestone | Date | Source trades | Accepted output | Evidence |
+| --- | --- | ---: | --- | --- |
+| First unattended Bronze/Silver cycle | 2026-09-09 | 50,917 | 50,917 Silver rows across 8 symbols; no rejected, duplicate, or quarantine rows | [Initial acceptance](docs/gcp-mvp/ACCEPTANCE_EVIDENCE.md) |
+| First unattended Gold cycle | 2026-09-11 | 64,270 | 440 candles across 8 symbols; zero duplicate business keys | [Gold acceptance](docs/gcp-gold/ACCEPTANCE_EVIDENCE.md) |
+| Controlled rerun and audit acceptance | 2026-09-16 | 57,952 | 447 candles; reused successful Silver batch; 2 successful stage-audit rows | [Run history evidence](docs/gcp-mvp/RUN_AUDIT.md#accepted-runtime-evidence) |
 
-### Liquidity & Volatility Analysis
+The first cloud BI increment also passed mart reconciliation and an interactive trading-symbol filter test. See [BI acceptance](docs/gcp-gold/BI_ACCEPTANCE_EVIDENCE.md).
 
-The Liquidity & Volatility dashboard helps users analyze:
+### Cloud Dashboard
 
-- Which symbols have the strongest liquidity?
-- Which symbols show abnormal volatility?
-- How buy pressure and sell pressure change over time.
-- Which symbols may require closer monitoring.
+[![Binance Market Overview on GCP Gold](docs/gcp-gold/images/gcp_market_overview_dashboard.png)](docs/gcp-gold/BI_ACCEPTANCE_EVIDENCE.md)
 
-### Pipeline Monitoring
+The dashboard presents market totals, symbol-level prices, quote-volume ranking, buy/sell pressure, and a trading-symbol filter. The screenshot is a historical acceptance snapshot.
 
-The Pipeline Health dashboard helps data engineers monitor:
+## Local Analytics Platform
 
-- Whether the data is fresh or stale.
-- Whether expected symbols are missing.
-- Whether pipeline runs completed successfully.
-- Whether data quality checks passed across Bronze, Silver, and Gold layers.
+The local profile demonstrates a broader analytics workflow using Kafka, PySpark, MinIO, PostgreSQL, dbt, Airflow, and Metabase.
 
-This makes the project a complete data product, not just a data pipeline.
----
+![Local lakehouse architecture](images/image.png)
 
-# 📌 Project Metrics
-
-|Metric|Value|
-|---|---|
-|Kafka retained trade events during local testing| 3.7M+ |
-|PostgreSQL fact table rows| 3,600+ |
-|dbt models| 8 |
-|dbt data tests| 35 |
-|Main Airflow DAG tasks| 12 |
-|Metabase dashboards| 3 |
-|Data lake layers| Bronze, Silver, Gold |
-|Warehouse loading strategy| Staging + Upsert |
-|Pipeline mode| Local micro-batch architecture |
-
-These metrics are based on local development and testing runs. They may change depending on Kafka retention, pipeline frequency, and runtime duration.
-
----
-
-## 🏗️ Architecture
-
-![Dashboard](./images/image.png)
-
-```
-Binance WebSocket API
-    │
-    V
-Python Kafka Producer
-    │
-    V
-Kafka Topic: crypto_trade_price_1
-    │
-    v
-Spark Bronze Ingestion
-    │
-    V 
-MinIO Bronze Layer
-    |
-    V
-Spark Silver Transform
-    |
-    V
-MinIO Silver Layer
-    │
-    V
-Spark Gold Aggregation
-    │
-    V
-MinIO Gold Layer
-    │
-    V
-PostgreSQL Staging + Fact Tables
-    │
-    V
-dbt Analytical Marts
-    │
-    V
-Metabase Dashboards
-```
-
-### Architecture Style
-
-This project follows a local micro-batch lakehouse architecture:
-
-- The Binance producer runs continuously and streams trade events into Kafka.
-- Airflow triggers the lakehouse pipeline in micro-batches.
-- Spark processes accumulated Kafka data through Bronze, Silver, and Gold layers.
-- PostgreSQL serves as the analytical warehouse.
-- dbt builds business-ready marts.
-- Metabase provides the final dashboard output.
-
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|---|---|
-|Data Source | Binance WebSocket API |
-|Ingestion | Python Kafka Producer |
-|Message Queue | Apache Kafka | 
-|Processing	| Apache Spark / PySpark|
-|Data Lake | MinIO |
-|File Format | Parquet |
-|Data Warehouse | PostgreSQL |
-|Transformation	| dbt |
-|Orchestration | Apache Airflow |
-|BI / Dashboard | Metabase |
-|Infrastructure | Docker, Docker Compose |
-|Languages | Python, SQL, PowerShell |
-
----
-# ⚙️ Engineering Highlights
-
-- Implemented a Medallion Architecture using Bronze, Silver, and Gold layers on MinIO.
-- Built a Kafka-based ingestion pipeline for Binance WebSocket trade events.
-- Used Spark micro-batch processing to convert streaming data into Parquet lakehouse layers.
-- Added data quality gates across Bronze, Silver, and Gold layers.
-- Designed an idempotent PostgreSQL loading process using staging tables and ON CONFLICT DO UPDATE.
-- Implemented SCD Type 2 for Binance symbol metadata.
-- Built dbt marts for market overview, OHLC summary, liquidity, trade pressure, volatility, freshness, and pipeline health.
-- Created Metabase dashboards as the final analytics output.
-- Added Airflow orchestration and pipeline audit logging.
-- Added data freshness monitoring to detect stale, missing, or delayed symbols.
-
-# Airflow Orchestration
-The main Airflow DAG orchestrates the full lakehouse workflow.
-
-### Main DAG
-binance_lakehouse_pipeline
-
-Pipeline tasks:
-
-bronze_ingestion
-→ bronze_quality_check
-→ silver_transform
-→ silver_quality_check
-→ gold_aggregation
-→ gold_quality_check
-→ load_gold_to_postgres
-→ load_symbol_metadata
-→ apply_scd_type2
-→ dbt_run
-→ dbt_test
-→ write_pipeline_audit_summary
-
-### Sentiment DAG
-
-market_sentiment_daily
-
-This DAG fetches Fear & Greed Index data and loads it into PostgreSQL for sentiment enrichment.
-
-Fear & Greed API
-→ Airflow Python Task
-→ PostgreSQL fact_market_sentiment
-→ dbt marts
-
-
-# 🥉🥈🥇 Medaliion Architecture
-
-## Bronze Layer
-
-The Bronze layer stores raw and lightly parsed Binance trade events in MinIO as Parquet.
-
-Main responsibilities:
-
-- Read JSON trade events from Kafka.
-- Preserve Kafka metadata such as topic, partition, offset, and timestamp.
-- Preserve the raw message payload.
-- Parse trade fields such as symbol, price, quantity, trade ID, and trade time.
-- Partition data by year, month, day, and hour.
-- Route invalid records into a dead-letter zone.
-
-Example columns:
+Its data path is `Binance WebSocket → Kafka → Spark Bronze/Silver/Gold → MinIO → PostgreSQL staging and upsert → dbt marts → Metabase`.
 
-topic
-partition
-offset
-kafka_timestamp
-raw_value
-symbol
-trade_id
-price
-quantity
-trade_time
-trade_timestamp
-year
-month
-day
-hour
+### Local Engineering Features
 
-Storage path:
+- Preserve raw messages and Kafka metadata in Bronze, with invalid-record routing.
+- Clean, deduplicate, and enrich trades in Silver.
+- Aggregate one-minute OHLC, volume, trade counts, and buy/sell pressure in Gold.
+- Load PostgreSQL through staging tables and `ON CONFLICT DO UPDATE`.
+- Track symbol metadata with an SCD Type 2 dimension.
+- Orchestrate processing, quality checks, warehouse loading, dbt, and audit logging through Airflow.
+- Build 8 enabled dbt models for market overview, OHLC, liquidity, trade pressure, volatility, freshness, and pipeline health.
+- Present 3 Metabase dashboards for market overview, liquidity/volatility, and pipeline health.
 
-s3a://bronze/crypto_trades/
+### Local Development Metrics
 
-Dead-letter path:
+| Metric | Recorded development snapshot |
+| --- | ---: |
+| Kafka-retained trade events | 3.7M+ |
+| PostgreSQL candle fact rows | 3,600+ |
+| Enabled dbt models | 8 |
+| Metabase dashboards | 3 |
 
-s3a://bronze/dead_letter/crypto_trades/
+The event and row totals are historical local-development observations retained from the [earlier README](https://github.com/LuanHai23/Binance_API_DataLakehouse/blob/f07f24c88534052407269e43467a22e8738e21a9/README.md#-project-metrics). They are not cloud totals, throughput benchmarks, or a fresh measurement.
 
----
+<details>
+<summary>Local dashboard and pipeline screenshots</summary>
 
-## Silver Layer
+### Market Overview
 
-The Silver layer cleans, validates, deduplicates, and enriches Bronze data.
+![Local market overview](images/Binance_Market_Overview.png)
 
-Main responsibilities:
+### Liquidity and Volatility
 
-- Remove invalid records.
-- Deduplicate trades by symbol and trade_id.
-- Standardize numeric precision.
-- Calculate trade value.
-- Derive trade side.
-- Detect large trades.
-- Add processing timestamp.
-- Partition data by year, month, day, and hour.
+![Local liquidity and volatility](images/Liquidity_Volatility_Analysis_1.png)
 
-Example derived fields:
+### Pipeline Health
 
-trade_value
-trade_side
-price_magnitude
-is_large_trade
-silver_processed_at
+![Local pipeline health](images/Binance_Pipeline_Health_Monitoring.png)
 
-Storage path:
+### Airflow Execution
 
-s3a://silver/crypto_trades/
+![Successful local Airflow pipeline](images/DAGs.png)
 
----
+### dbt Lineage
 
-## Gold Layer
+![Local dbt lineage](binance_analytics/docs/image/dbt_lineage_graph.png)
 
-The Gold layer aggregates Silver trades into analytics-ready OHLC market candles.
+</details>
 
-Main responsibilities:
+## Getting Started
 
-- Aggregate trades into 1-minute candles.
-- Calculate open, high, low, close prices.
-- Calculate total volume and quote volume.
-- Calculate buy/sell volume.
-- Count trades and large trades.
-- Produce market-level fact data for warehouse loading.
+### Local Setup
 
-Example grain:
+Prerequisites: Git, Docker Engine or Docker Desktop, and Docker Compose. Python and dbt are required when running their commands outside the containers.
 
-One row per symbol per candle_start_time
-
-Storage path:
-
-s3a://gold/market_candles/
-
----
-
-# 🏦 PostgreSQL Data Warehouse
-
-PostgreSQL is used as the serving warehouse for dbt and Metabase.
-
-Main tables:
-
-| Table | Purpose |
-|---|---|
-| stg_market_candles | Staging table for Gold data before upsert |
-| fact_market_candles | Main OHLC market candle fact table |
-| stg_symbol_metadata | Staging table for Binance symbol metadata |
-| dim_symbol_scd | SCD Type 2 dimension for symbol metadata |
-| fact_market_sentiment | Daily Fear & Greed Index data |
-| pipeline_run_audit | Pipeline run audit log |
-
-Primary fact grain:
-
-One row per symbol per candle_start_time
-
-Primary key:
-
-(symbol, candle_start_time)
-
----
-
-# 🔁 Idempotent Warehouse Loading
-
-The project uses a staging table and PostgreSQL upsert logic to make warehouse loading safe for reruns and Airflow retries.
-
-Flow:
-
-Gold Parquet
-
-→ PostgreSQL stg_market_candles
-→ INSERT ... ON CONFLICT DO UPDATE
-→ PostgreSQL fact_market_candles
-
-This prevents duplicate fact records when the same Gold candles are loaded multiple times.
-
----
-
-# 🧬 SCD Type 2
-
-The project tracks Binance symbol metadata using SCD Type 2.
-
-The dimension table preserves historical changes in symbol attributes instead of overwriting old records.
-
-Tracked metadata includes:
-
-Symbol
-
-- Base asset
-- Quote asset
-- Status
-- Price precision
-- Quantity precision
-- Tick size
-- Step size
-- Minimum quantity
-- Record hash
-- Valid from
-- Valid to
-- Is current
-
-Table:
-
-dim_symbol_scd
-
----
-
-# ✅ Data Quality Gates
-
-Data quality checks are executed across Bronze, Silver, and Gold layers before data is loaded into the warehouse.
-
-Bronze Quality Checks
-
-- Bronze data must not be empty.
-- Symbol must not be null.
-- Trade ID must not be null.
-- Price must be greater than 0.
-- Quantity must be greater than 0.
-- Trade timestamp must not be null.
-- Kafka metadata must exist.
-
-Silver Quality Checks
-
-- Silver data must not be empty.
-- Price and quantity must be positive.
-- Trade value must be positive.
-- Duplicate symbol + trade_id records are rejected.
-- Expected symbols are validated.
-- Trade timestamp must not be null.
-
-Gold Quality Checks
-
-- Gold data must not be empty.
-- high_price >= low_price.
-- open_price > 0.
-- close_price > 0.
-- total_volume >= 0.
-- trade_count > 0.
-- Duplicate symbol + candle_start_time records are rejected.
-
-If a quality gate fails, Airflow stops the pipeline before invalid data reaches PostgreSQL.
-
----
-
-# 🧱 dbt Analytical Marts
-
-dbt is used to build analytical marts and enforce data tests.
-
-| Model | Purpose |
-|---|---|
-| mart_market_overview | Market overview by symbol |
-| mart_market_overview_enriched | Market overview enriched with SCD symbol metadata |
-| mart_ohlc_summary | OHLC candle summary |
-| mart_symbol_liquidity |	Liquidity ranking |
-| mart_trade_pressure | Buy/sell pressure analysis |
-| mart_volatility_signal | Volatility classification |
-| mart_data_freshness | Data freshness monitoring |
-| mart_pipeline_health | Pipeline health monitoring |
-
-Generate dbt documentation:
-
-```
-cd binance_analytics
-dbt docs generate
-dbt docs serve --port 8088
-```
-
-Open:
-
-```
-http://localhost:8088
-```
-
----
-
-# 📊 Dashboards
-
-The final output of this project is a set of Metabase dashboards.
-
-## 1. Binance Market Overview
-
-This dashboard provides a high-level view of market activity by symbol.
-
-It includes:
-
-- Current price by symbol.
-- 24h quote volume.
-- Price change percentage.
-- Buy ratio percentage.
-- Market overview table.
-
-Business questions answered:
-
-- Which symbols are most actively traded?
-- Which symbols have the strongest price movement?
-- Which symbols show higher buy-side pressure?
-
-## 2. Liquidity & Volatility Analysis
-
-This dashboard analyzes liquidity ranking, quote volume, buy/sell pressure, and volatility signals across symbols.
-
-It includes:
-
-Liquidity ranking.
-- Total quote volume ranking.
-- Hourly buy pressure.
-- Buy vs sell pressure signal.
-- Volatility signal by symbol.
-- Hourly price range percentage.
-
-Business questions answered:
-
-- Which symbols have the strongest liquidity?
-- Which symbols are more volatile?
-- Is buy pressure or sell pressure stronger?
-- Which symbols may require closer monitoring?
-
-## 3. Pipeline Health Monitoring
-
-This dashboard monitors data freshness, pipeline health, audit logs, and failed/retried tasks.
-
-It includes:
-
-- Data freshness by symbol.
-- Freshness status distribution.
-- Pipeline health by hour.
-- Latest pipeline audit logs.
-- Failed or retried tasks.
-
-Engineering questions answered:
-
-- Is the data fresh or stale?
-- Are any symbols missing?
-- Did the pipeline complete successfully?
-- Which task failed or retried recently?
-
----
-
-# 🚀 Getting Started
-
-Prerequisites
-
-- Docker
-- Docker Compose
-- Git
-- Python 3.10+
-- Windows PowerShell or Linux shell
-
-No Binance API key is required for public WebSocket trade streams.
-
----
-
-### 1. Clone the repository
-
-```
-git clone https://github.com/LuanHai23/Binance_API_DataLakeHouse.git
-```
-
-```
-cd Binance_API_DataLakeHouse
-```
-
-### 3. Configure environment variables
-
-```
+```bash
+git clone https://github.com/LuanHai23/Binance_API_DataLakehouse.git
+cd Binance_API_DataLakehouse
 cp .env.example .env
 ```
 
-Update values if needed:
+Configure `.env` against [docker-compose.yml](docker-compose.yml), including PostgreSQL, MinIO, Kafka, and Metabase settings. Keep shared connection settings consistent with the Airflow and dbt configuration.
 
-KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-KAFKA_TOPIC=crypto_trade_price_1
-
-```
-MINIO_ENDPOINT=http://minio:9000
-MINIO_ACCESS_KEY=minio_admin
-MINIO_SECRET_KEY=minio_password
-
-POSTGRES_HOST=postgres
-POSTGRES_PORT=5432
-POSTGRES_DB=warehouse_db
-POSTGRES_USER=admin
-POSTGRES_PASSWORD=adminpassword
+```bash
+docker compose config --quiet
+docker compose up -d postgres zookeeper kafka minio spark-master spark-worker-1 spark-worker-2
 ```
 
-### 3. Start all services
+Before triggering the analytics pipeline, complete the one-time local bootstrap:
 
-```
-docker compose up -d
-```
+1. Create the `bronze`, `silver`, and `gold` buckets in MinIO.
+2. Create `warehouse_db` and initialize the warehouse tables using the DDL files under [scripts/init_db](scripts/init_db/).
+3. Create the PostgreSQL metadata database configured for Metabase.
+4. Confirm that PostgreSQL is healthy, then initialize Airflow and start the application services:
 
-### 4. Access services
-
-|Service | URL | Notes |
-|---|---|---|
-|Airflow | http://localhost:8081 | Pipeline orchestration|
-|MinIO | http://localhost:9001 | Data lake storage|
-|Metabase | http://localhost:3000 | BI dashboards|
-|Spark UI | http://localhost:8080 | Spark cluster UI|
-|PostgreSQL | localhost:5433 or container network postgres:5432 | Warehouse|
-
-### 5. Run the pipeline
-
-Trigger the main Airflow DAG:
-
-binance_lakehouse_pipeline
-
-Trigger the sentiment DAG:
-
-market_sentiment_daily
-
-Or run from PowerShell:
-
-```
-.\scripts\run_full_pipeline.ps1
-.\scripts\run_sentiment_pipeline.ps1
+```bash
+docker compose run --rm airflow-init
+docker compose up -d airflow-webserver airflow-scheduler binance_producer metabase
 ```
 
-### 6. Check warehouse data
+Enable and trigger `binance_lakehouse_pipeline` in Airflow after the producer has collected data. The optional `market_sentiment_daily` DAG ingests sentiment data; its experimental dbt join model is disabled.
 
-docker exec -it de_postgres psql -U admin -d warehouse_db -c "SELECT COUNT(*), MIN(candle_start_time), MAX(candle_start_time) FROM public.fact_market_candles;"
+| Service | Local address |
+| --- | --- |
+| Airflow | http://localhost:8081 |
+| MinIO console | http://localhost:9001 |
+| Metabase | http://localhost:3000 |
+| Spark master UI | http://localhost:8080 |
+| PostgreSQL from host | localhost:5433 |
 
-### 7. Run dbt manually
+The local profile includes environment-specific bootstrap steps and demonstration configuration. Inspect [Docker Compose](docker-compose.yml), the [main DAG](dags/binance_lakehouse_pipeline_dag.py), and [dbt configuration](binance_analytics/) when adapting it to a new machine.
 
-```
-cd binance_analytics
-dbt run
-dbt test
-```
+### GCP Operations
 
-# 📁 Project Structure
+Start with the [operations runbook](docs/gcp-mvp/OPERATIONS_RUNBOOK.md), then use the [Gold data contract](docs/gcp-gold/DATA_CONTRACT.md) and [Silver/Gold run-history guide](docs/gcp-mvp/RUN_AUDIT.md) for the extended pipeline.
 
-```
-Binance_API_DataLakeHouse/
-├── dags/
-│   ├── binance_lakehouse_pipeline_dag.py
-│   └── sentiment_dag.py
-├── kafka_producer/
-│   └── producer.py
-├── scripts/
-│   ├── Medallion/
-│   │   ├── spark_stream_bronze_ingestion_data.py
-│   │   ├── spark_stream_silver_transform_data.py
-│   │   ├── spark_stream_gold_aggregate_modeling_data.py
-│   │   └── load_gold_to_postgres.py
-│   ├── data_quality_check/
-│   │   ├── quality_check_bronze.py
-│   │   ├── quality_check_silver.py
-│   │   └── quality_check_gold.py
-│   ├── init_db/
-│   │   ├── init_fact_market_candles.sql
-│   │   ├── init_stg_market_candles.sql
-│   │   ├── init_symbol_scd.sql
-│   │   ├── init_fact_market_sentiment.sql
-│   │   ├── init_pipeline_run_audit.sql
-│   │   ├── apply_symbol_scd_type2.sql
-│   │   └── upsert_fact_market_candles.sql
-│   ├── audit_logger.py
-│   ├── load_symbol_metadata.py
-│   ├── run_full_pipeline.ps1
-│   ├── run_sentiment_pipeline.ps1
-│   ├── run_dbt_local.ps1
-│   ├── start_services.ps1
-│   └── stop_services.ps1
-├── binance_analytics/
-│   ├── models/
-│   ├── macros/
-│   ├── dbt_project.yml
-│   ├── profiles.yml
-│   └── packages.yml
-├── images/
-│   ├── architecture.png
-│   ├── metabase_market_overview.png
-│   ├── metabase_liquidity_volatility.png
-│   ├── metabase_pipeline_health.png
-│   ├── airflow_pipeline_success.png
-│   ├── dbt_lineage.png
-│   └── dbt_tests_success.png
-├── docker-compose.yml
-├── Dockerfile.airflow
-├── Dockerfile.spark
-├── Dockerfile.producer
-├── dockerfile
-├── .env.example
-├── .gitignore
-├── requirements.txt
-└── README.md
-```
+Cloud deployment uses project-specific Terraform backend, IAM, billing, and runtime settings under [infra/terraform](infra/terraform/). Docker Compose starts the local profile; it does not deploy the cloud profile.
 
-📸 Screenshots
-Airflow Pipeline Success
+## Testing and CI
 
-![Dashboard](./images/DAGs.png)
+[GitHub Actions](.github/workflows/CI.yml) runs three validation jobs on pushes and pull requests:
 
+| Job | Scope |
+| --- | --- |
+| Python and YAML | Python syntax, producer unit tests, tracked YAML, and rendered GCP Workflow definitions |
+| Terraform | Formatting, backend-disabled initialization, and configuration validation |
+| dbt | Locked dependency installation and full project parsing without a warehouse connection |
 
-dbt Lineage
+Verified repository evidence:
 
-![Dashboard](./binance_analytics/docs/image/dbt_lineage_graph.png)
+- **84 Python unit tests passed** and **11 tracked YAML files validated** in the [current-main CI run](https://github.com/LuanHai23/Binance_API_DataLakehouse/actions/runs/38062527131) for commit `f07f24c`.
+- **8 enabled dbt models and 37 test nodes** were recorded during merge acceptance. Parsing test nodes does not execute those tests against data.
+- All three jobs passed in both the [post-merge run](https://github.com/LuanHai23/Binance_API_DataLakehouse/actions/runs/35369512931) and the current-main run above.
+- [PR #1](https://github.com/LuanHai23/Binance_API_DataLakehouse/pull/1) contains the finalized migration scope and runtime acceptance evidence.
 
+CI uses read-only repository permissions and no GCP credentials. Infrastructure deployment and cloud runtime acceptance are separate from these checks.
 
-dbt Test Success
+## Repository Guide
 
-![Dashboard](./binance_analytics/docs/image/dbt_tests_success_1.png)
+| Path | Responsibility |
+| --- | --- |
+| [kafka_producer/](kafka_producer/) | Binance ingestion, event contracts, publisher adapters, and runtime controls |
+| [scripts/Medallion/](scripts/Medallion/) | Local Spark layers, cloud Silver batch, and warehouse loaders |
+| [scripts/data_quality_check/](scripts/data_quality_check/) | Local quality-check scripts |
+| [scripts/init_db/](scripts/init_db/) | Local warehouse DDL, SCD logic, and upsert SQL |
+| [dags/](dags/) | Local Airflow orchestration |
+| [binance_analytics/](binance_analytics/) | Local PostgreSQL dbt models, tests, and configuration |
+| [infra/terraform/](infra/terraform/) | GCP infrastructure, IAM, scheduling, monitoring, and Workflows |
+| [sql/gcp_gold/](sql/gcp_gold/) | Cloud candle construction and BI view SQL |
+| [sql/gcp_ops/](sql/gcp_ops/) | Cloud stage-audit SQL |
+| [cloudbuild.producer.yaml](cloudbuild.producer.yaml) | Producer image build configuration |
+| [tests/](tests/) | Python unit tests |
+| [.github/workflows/CI.yml](.github/workflows/CI.yml) | Repository validation workflow |
 
-![Dashboard](./binance_analytics/docs/image/dbt_test_success_2.png)
+## Documentation and Evidence
 
-Metabase Market Overview
+| Document | Scope |
+| --- | --- |
+| [Initial GCP acceptance](docs/gcp-mvp/ACCEPTANCE_EVIDENCE.md) | First unattended Bronze/Silver/BigLake milestone |
+| [Operations runbook](docs/gcp-mvp/OPERATIONS_RUNBOOK.md) | Initial deployment operations and Silver DQ controls |
+| [Cloud Gold contract](docs/gcp-gold/DATA_CONTRACT.md) | Candle schema, grain, and loading rules |
+| [Cloud Gold acceptance](docs/gcp-gold/ACCEPTANCE_EVIDENCE.md) | Automated Gold execution, reconciliation, and rerun behavior |
+| [Cloud BI acceptance](docs/gcp-gold/BI_ACCEPTANCE_EVIDENCE.md) | Dashboard validation and rolling-window correction |
+| [Run audit guide](docs/gcp-mvp/RUN_AUDIT.md) | Silver/Gold stage history, failure semantics, and final acceptance |
+| [Merged migration PR](https://github.com/LuanHai23/Binance_API_DataLakehouse/pull/1) | Consolidated implementation and merge evidence |
 
-![Dashboard](./images/Binance_Market_Overview.png)
+The documents preserve successive milestones. Statements about future Gold or BI work in the initial Bronze/Silver documents describe that earlier scope; later Gold, BI, and audit acceptance extend it.
 
-Metabase Liquidity & Volatility
+## Known Limitations and Next Steps
 
-![Dashboard](./images/Liquidity_Volatility_Analysis_1.png)
-![Dashboard](./images/Liquidity_Volatility_Analysis_2.png)
+| Area | Current boundary | Follow-up |
+| --- | --- | --- |
+| Cloud coverage | One bounded ingestion window per day | Evaluate greater coverage against compute and query cost |
+| Recovery | Controlled historical backfill is not implemented | Add explicit range selection and tested replay controls |
+| Audit history | Best-effort stage writes; forced cancellation can leave `RUNNING` rows | Add stale-run detection and audit completeness checks |
+| Local portability | Manual database/bucket bootstrap and environment-specific configuration | Automate initialization and document a clean-machine smoke test |
+| Event governance | Application-level contracts; no Kafka schema registry | Evaluate versioned schema compatibility controls |
+| Delivery | CI validates source; cloud deployment remains separately controlled | Add reviewed promotion and rollback automation |
+| Dependencies | dbt deprecation and package-update follow-ups remain | Validate compatibility before changing pinned dependencies |
 
-Metabase Pipeline Health
+## Author
 
-![Dashboard](./images/Binance_Pipeline_Health_Monitoring.png)
+**Nguyễn Ngọc Hải Luân** — Data Science graduate pursuing Data Engineer Intern/Fresher opportunities.
 
----
-
-# 🧠 Key Engineering Decisions
-
-Why use Kafka?
-
-Kafka acts as a buffer between the Binance producer and the Spark processing layer. This allows the ingestion layer and processing layer to be decoupled.
-
-Why use Medallion Architecture?
-
-The Bronze/Silver/Gold design separates raw data, cleaned data, and analytics-ready data. This makes the pipeline easier to debug, validate, and extend.
-
-Why use micro-batch processing?
-
-For this local project, micro-batch processing is more stable and easier to orchestrate than fully continuous streaming across all layers. The producer and Kafka run continuously, while Airflow triggers Spark jobs in batches.
-
-Why use staging + upsert?
-
-Direct append into the fact table can create duplicate records when Airflow retries or when the pipeline is rerun. The staging + upsert pattern makes the warehouse load idempotent.
-
-Why use dbt?
-
-dbt provides a clean transformation layer, model documentation, data tests, and lineage graph. It helps turn warehouse tables into business-ready analytical marts.
-
-Why use Metabase?
-
-Metabase provides the final business-facing output of the project. It allows users to explore market data, monitor liquidity and volatility, and track pipeline health through dashboards.
-
----
-
-# ⚠️ Known Limitations
-
-- This project is designed for local development and portfolio demonstration, not cloud production deployment.
-- Kafka, Spark, MinIO, PostgreSQL, Airflow, and Metabase are deployed locally using Docker Compose.
-- The pipeline uses micro-batch processing instead of fully continuous end-to-end streaming.
-- No schema registry is implemented for Kafka message validation.
-- No cloud object storage or managed orchestration service is used.
-- Monitoring is implemented through Airflow logs, audit tables, dbt tests, and Metabase dashboards, not Prometheus/Grafana.
-- Security hardening such as HTTPS, secret manager integration, and role-based access control is not implemented.
-
----
-
-# 🔮 Future Improvements
-- Deploy the pipeline on a cloud platform such as Azure or AWS.
-- Replace local MinIO with cloud object storage.
-- Add a schema registry for Kafka message validation.
-- Add Prometheus and Grafana for infrastructure-level monitoring.
-- Add Slack or Discord alerts for failed Airflow tasks.
-- Add Great Expectations for declarative data quality checks.
-- Add Apache Iceberg or Delta Lake for ACID table management.
-- Add CI/CD checks for Python, dbt, and Docker.
-- Add anomaly detection for abnormal volume, volatility, and price movement.
-
----
-
-# ⚠️ Disclaimer
-
-This project is for educational and portfolio purposes only. It is not financial advice and should not be used for real trading decisions.
-
----
-
-# 🤝 Let's Connect
-
-This project is a milestone in my journey toward becoming a Data Engineer. Building this end-to-end lakehouse helped me strengthen my skills in distributed processing, data orchestration, warehouse modeling, and analytical dashboarding.
-
-I am currently open to Fresher Data Engineer and Data Engineer Intern opportunities.
-
-Email: nguyenngochailuan16112003@gmail.com
-
-# 🌟 Explore More
-
-If you liked this project, feel free to check out my other Data Engineering projects:
-
-DataLens Lakehouse — Vietnam IT Job Market Data Lakehouse
+[GitHub](https://github.com/LuanHai23) · [Email](mailto:nguyenngochailuan16112003@gmail.com)
